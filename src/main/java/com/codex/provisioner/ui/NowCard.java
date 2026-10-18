@@ -1,0 +1,187 @@
+package com.codex.provisioner.ui;
+
+import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Req;
+import com.codex.provisioner.core.Step;
+import java.awt.BorderLayout;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.FontMetrics;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.util.Locale;
+import java.util.Map;
+import javax.swing.JComponent;
+
+/**
+ * The step in hand, given the room it deserves: what to do and to what, how many are left, how far
+ * along it is, the levels it asks for, what goes in and how much of it is held, and what to bring.
+ */
+class NowCard extends Card
+{
+	NowCard(Chain chain, Step step, View view, ItemIcons icons, int width)
+	{
+		super(new BorderLayout());
+		accent(StepRow.color(step, true));
+		highlighted(true);
+		StackPanel stack = new StackPanel(5, 0);
+		stack.add(new Headline(chain, step, view, icons));
+		stack.add(Ui.wrapped(step.getRecipe().getHow(), Theme.small(), Theme.TEXT_MUTED, width));
+
+		for (Req req : step.getRecipe().getReqs())
+		{
+			Integer have = view.level(req.getSkill());
+			boolean met = req.met(view.levels);
+			String text = Ui.skill(req.getSkill()) + " " + req.getLevel() + (req.isSoft() ? " to grow your own" : "")
+				+ (have == null ? "" : met ? "  -  you have " + have : "  -  you have " + have + ", " + (req.getLevel() - have) + " to go");
+			stack.add(new Fact(met ? Fact.TICK : Fact.CROSS, text, req.isSoft() ? Theme.TEXT_FAINT : met ? Theme.TEAL : Theme.BLOOD));
+		}
+		for (Map.Entry<Integer, Integer> in : step.getRecipe().getInputs().entrySet())
+		{
+			long held = view.held(in.getKey());
+			long need = (step.getNet() + step.getRecipe().getMakes() - 1) / step.getRecipe().getMakes() * in.getValue();
+			String each = in.getValue() == 1 && step.getRecipe().getMakes() == 1 ? "" : "  (" + in.getValue() + " a go)";
+			String text = view.name(in.getKey()) + each + ": " + Format.amount(held) + " of " + Format.amount(need);
+			stack.add(new Fact(Fact.DIAMOND, text, held >= need ? Theme.GREEN : held > 0 ? Theme.GOLD : Theme.TEXT_FAINT));
+		}
+		for (int tool : step.getRecipe().getTools())
+		{
+			boolean has = view.held(tool) > 0;
+			stack.add(new Fact(has ? Fact.TICK : Fact.CROSS, "Bring a " + view.name(tool).toLowerCase(Locale.ENGLISH) + (has ? "" : "; none in your bank"),
+				has ? Theme.TEAL : Theme.EMBER));
+		}
+		if (step.getState() == Step.State.READY && !step.getRecipe().isSource() && step.getCanNow() < step.getNet())
+		{
+			stack.add(Ui.wrapped("What you hold makes " + Format.amount(step.getCanNow()) + " now; the rest waits on earlier steps.",
+				Theme.small(), Theme.TEXT_FAINT, width));
+		}
+		add(stack, BorderLayout.CENTER);
+	}
+
+	/** The big line: the item, the verb, what is left and the bar. */
+	private static final class Headline extends JComponent
+	{
+		private final Step step;
+		private final String name;
+		private final String position;
+		private final ItemIcons icons;
+
+		Headline(Chain chain, Step step, View view, ItemIcons icons)
+		{
+			this.step = step;
+			this.name = view.name(step.getItem());
+			this.position = "STEP " + chain.number(step) + " OF " + chain.getSteps().size();
+			this.icons = icons;
+			setOpaque(false);
+			setPreferredSize(new Dimension(10, Well.SIZE + 40));
+		}
+
+		@Override
+		protected void paintComponent(Graphics graphics)
+		{
+			Graphics2D g = (Graphics2D) graphics.create();
+			Theme.smooth(g);
+			int w = getWidth();
+			Color color = StepRow.color(step, true);
+			g.setFont(Theme.small());
+			FontMetrics small = g.getFontMetrics();
+			g.setColor(Theme.GOLD_DIM);
+			g.drawString("NOW", 0, small.getAscent());
+			g.setColor(Theme.TEXT_FAINT);
+			g.drawString(position, w - small.stringWidth(position), small.getAscent());
+
+			int top = small.getHeight() + 2;
+			Well.paint(g, 0, top, icons == null ? null : icons.icon(step.getItem(), this::repaint), Theme.alpha(color, 200));
+			int tx = Well.SIZE + 12;
+
+			String left = step.getState() == Step.State.LOCKED ? "Lv " + step.getUnmet().getLevel() : Format.amount(step.getNet());
+			int lw = Crest.paintLarge(g, left, w - largeWidth(g, left), top + 2, color);
+			g.setFont(Theme.small());
+			g.setColor(Theme.TEXT_FAINT);
+			String to = step.getState() == Step.State.LOCKED ? "locked" : "to go";
+			g.drawString(to, w - small.stringWidth(to), top + Well.SIZE + 2);
+
+			g.setFont(Theme.small());
+			g.setColor(color);
+			g.drawString(step.getRecipe().getVerb().label().toUpperCase(Locale.ENGLISH), tx, top + small.getAscent() + 1);
+			g.setFont(Theme.title());
+			FontMetrics bold = g.getFontMetrics();
+			Ui.shadowed(g, Ui.clip(name, bold, w - tx - lw - 6), tx, top + small.getHeight() + bold.getAscent() + 2, Theme.TEXT);
+
+			int by = top + Well.SIZE + 8;
+			Bar.paint(g, 0, by, w, 5, step.progress());
+			String count = Format.amount(step.getDone()) + " / " + Format.amount(step.getBaseline());
+			g.setFont(Theme.small());
+			g.setColor(Theme.TEXT_FAINT);
+			g.drawString(count, 0, by + 16);
+			String pct = Format.percent(step.progress());
+			g.drawString(pct, w - small.stringWidth(pct), by + 16);
+			g.dispose();
+		}
+
+		private static int largeWidth(Graphics2D g, String text)
+		{
+			return (g.getFontMetrics(Theme.title()).stringWidth(text) + 1) * 2;
+		}
+	}
+
+	/** A small marked line: a requirement, an input, or a tool. */
+	private static final class Fact extends JComponent
+	{
+		static final int TICK = 0;
+		static final int CROSS = 1;
+		static final int DIAMOND = 2;
+
+		private final int mark;
+		private final String text;
+		private final Color color;
+
+		Fact(int mark, String text, Color color)
+		{
+			this.mark = mark;
+			this.text = text;
+			this.color = color;
+			setOpaque(false);
+			setPreferredSize(new Dimension(10, 14));
+			setToolTipText(text);
+		}
+
+		@Override
+		protected void paintComponent(Graphics graphics)
+		{
+			Graphics2D g = (Graphics2D) graphics.create();
+			Theme.smooth(g);
+			g.setFont(Theme.small());
+			FontMetrics fm = g.getFontMetrics();
+			int base = fm.getAscent();
+			int cy = base - 4;
+			g.setColor(color);
+			g.setStroke(new java.awt.BasicStroke(1.5f, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+			java.awt.geom.Path2D p = new java.awt.geom.Path2D.Float();
+			if (mark == TICK)
+			{
+				p.moveTo(1, cy);
+				p.lineTo(3.5f, cy + 2.5f);
+				p.lineTo(8, cy - 3);
+				g.draw(p);
+			}
+			else if (mark == CROSS)
+			{
+				g.drawLine(2, cy - 3, 7, cy + 2);
+				g.drawLine(7, cy - 3, 2, cy + 2);
+			}
+			else
+			{
+				p.moveTo(4.5f, cy - 3.5f);
+				p.lineTo(8, cy);
+				p.lineTo(4.5f, cy + 3.5f);
+				p.lineTo(1, cy);
+				p.closePath();
+				g.fill(p);
+			}
+			g.setColor(Theme.mix(Theme.TEXT_MUTED, color, 0.25));
+			g.drawString(Ui.clip(text, fm, getWidth() - 12), 12, base);
+			g.dispose();
+		}
+	}
+}

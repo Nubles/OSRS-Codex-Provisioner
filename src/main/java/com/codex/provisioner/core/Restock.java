@@ -14,15 +14,16 @@ public final class Restock
 	/** The same warning comes again no sooner than this. */
 	static final long QUIET_MS = 30 * 60_000L;
 
-	/** The kit and supply last warned of, and the trips then held. */
+	/** The kit last warned of, and the trips then held. */
 	private String lastKey;
 	private long lastReady;
 	private long lastAt;
 
 	/**
 	 * What to say as the bank opens, or null for nothing. A player working through the chain at
-	 * the bank sees the count fall with each load, so the same kit and supply are warned of again
-	 * only once fewer trips are held than last time, or after half an hour.
+	 * the bank sees the count fall with each load, so the same kit is warned of again
+	 * only once fewer trips are held than last time, or after half an hour, whichever supply is
+	 * first to run out.
 	 *
 	 * @param chosen the kit the player picked on the Kits tab, or null: a kit only shown by
 	 *     default, never picked, is not one the player is stocking for, so it is never warned of
@@ -38,9 +39,10 @@ public final class Restock
 			lastKey = null;
 			return null;
 		}
-		Chain.Line first = chain.limiting();
-		String key = chain.getKit().getId() + "/" + first.getSupply().getKey();
-		long ready = first.tripsHeld();
+		// Keyed by the kit alone: with two supplies near level, the one first to run out swaps
+		// from visit to visit while the trips held stay the same, which is no news.
+		String key = chain.getKit().getId();
+		long ready = chain.limiting().tripsHeld();
 		if (key.equals(lastKey) && ready >= lastReady && now - lastAt < QUIET_MS)
 		{
 			return null;

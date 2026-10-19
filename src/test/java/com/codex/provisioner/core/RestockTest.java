@@ -67,4 +67,27 @@ public class RestockTest
 		assertNull(r.onBank(vorkath(8), "v", 3, NAMES, t + 200_000 + Restock.QUIET_MS));
 		assertNotNull(r.onBank(vorkath(1), "v", 3, NAMES, t + 210_000 + Restock.QUIET_MS));
 	}
+
+	/** Food first, then prayer: 200 hitpoints and ten doses a trip, with so many sharks and four-dose potions held. */
+	private static Chain twoSupplies(long sharks, long potions)
+	{
+		Kit kit = new Kit("v", "Vorkath", Arrays.asList(new Need("FOOD", 200), new Need("PRAYER", 10)), false);
+		Map<Integer, Long> held = new HashMap<>();
+		held.put(ItemID.SHARK, sharks);
+		held.put(ItemID._4DOSEPRAYERRESTORE, potions);
+		return Chain.build(kit, Collections.emptyMap(), 10, Collections.emptyMap(), held, Collections.emptyMap(), Collections.emptyMap());
+	}
+
+	@Test
+	public void isNotRepeatedWhenAnotherSupplyRunsOutFirstAtTheSameTrips()
+	{
+		Restock r = new Restock();
+		long t = 1_000_000;
+		// Two trips of food, one of prayer: one trip, prayer first to run out.
+		assertEquals(1, twoSupplies(20, 3).readyTrips());
+		assertNotNull(r.onBank(twoSupplies(20, 3), "v", 3, NAMES, t));
+		// A trip of food eaten: still one trip held, food now first to run out. Nothing new to tell.
+		assertEquals(1, twoSupplies(10, 3).readyTrips());
+		assertNull(r.onBank(twoSupplies(10, 3), "v", 3, NAMES, t + 60_000));
+	}
 }

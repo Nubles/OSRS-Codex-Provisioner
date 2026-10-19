@@ -26,16 +26,16 @@ class KitCard extends Card
 		}
 		else
 		{
-			detail = summary.shortSupplies + (summary.shortSupplies == 1 ? " supply" : " supplies") + " short  -  "
+			detail = summary.shortSupplies + (summary.shortSupplies == 1 ? " supply" : " supplies") + " short \u00b7 "
 				+ summary.steps + (summary.steps == 1 ? " step" : " steps");
 		}
 		if (summary.ready > 0 && summary.shortSupplies > 0)
 		{
-			detail += "  -  ready for " + summary.ready + (summary.ready == 1 ? " trip" : " trips");
+			detail += " \u00b7 ready for " + summary.ready + (summary.ready == 1 ? " trip" : " trips");
 		}
 		if (summary.measured >= 2)
 		{
-			detail += "  -  measured";
+			detail += " \u00b7 measured";
 		}
 		add(Ui.wrapped(detail, Theme.small(), summary.shortSupplies == 0 ? Theme.GREEN : Theme.TEXT_MUTED, width), BorderLayout.CENTER);
 		if (!chosen)

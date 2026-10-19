@@ -3,6 +3,7 @@ package com.codex.provisioner.ui;
 import com.codex.provisioner.core.Chain;
 import com.codex.provisioner.core.Sitting;
 import com.codex.provisioner.core.Step;
+import com.codex.provisioner.core.Tree;
 import com.codex.provisioner.core.Supplies;
 import com.codex.provisioner.core.Supply;
 import java.awt.BorderLayout;
@@ -33,13 +34,13 @@ import net.runelite.client.ui.PluginPanel;
 public class ProvisionerPanel extends PluginPanel
 {
 	static final int WIDTH = 200;
-	private static final String[] TABS = {"chain", "stores", "kits"};
+	private static final String[] TABS = {"chain", "tree", "stores", "kits"};
 	private static final int[] TRIPS = {5, 10, 25, 50, 100};
 
 	private final ItemIcons icons;
 	private final Actions actions;
 	private final Crest crest = new Crest();
-	private final Segmented tabs = new Segmented(true, "Chain", "Stores", "Kits");
+	private final Segmented tabs = new Segmented(true, "Chain", "Tree", "Stores", "Kits");
 	private final Segmented trips = new Segmented(false, "5", "10", "25", "50", "100");
 	/** How long a sitting the Chain page plans, in minutes. */
 	private static final int[] SITTINGS = {30, 60, 120, 180};
@@ -47,12 +48,13 @@ public class ProvisionerPanel extends PluginPanel
 	private final CardLayout cards = new CardLayout();
 	private final JPanel content = new JPanel(cards);
 	private final JScrollPane chainPage = scroller();
+	private final JScrollPane treePage = scroller();
 	private final JScrollPane storesPage = scroller();
 	private final JScrollPane kitsPage = scroller();
 
 	private View view = View.loggedOut();
 	/** Which pages still show an older view; a page is only rebuilt when it is looked at. */
-	private final boolean[] stale = {true, true, true};
+	private final boolean[] stale = {true, true, true, true};
 
 	public ProvisionerPanel(ItemIcons icons, Actions actions)
 	{
@@ -74,8 +76,9 @@ public class ProvisionerPanel extends PluginPanel
 
 		content.setOpaque(false);
 		content.add(chainPage, TABS[0]);
-		content.add(storesPage, TABS[1]);
-		content.add(kitsPage, TABS[2]);
+		content.add(treePage, TABS[1]);
+		content.add(storesPage, TABS[2]);
+		content.add(kitsPage, TABS[3]);
 		add(content, BorderLayout.CENTER);
 
 		tabs.onChange(this::showTab);
@@ -157,6 +160,10 @@ public class ProvisionerPanel extends PluginPanel
 		}
 		else if (page == 1)
 		{
+			rebuildTree();
+		}
+		else if (page == 2)
+		{
 			rebuildStores();
 		}
 		else
@@ -173,7 +180,9 @@ public class ProvisionerPanel extends PluginPanel
 			crest.update("PROVISIONS", null, 0, false, -1, "Log in to plan your supplies", null, Theme.TEXT_MUTED, Theme.GOLD);
 			return;
 		}
-		String heading = (chain.getKit().getName() + "  -  " + chain.getTrips() + " trips").toUpperCase(Locale.ENGLISH);
+		// A long kit name keeps the heading to itself; the trips are on the Stores tab, and a cut "100 TR..." helps no one.
+		String full = chain.getKit().getName() + " \u00b7 " + chain.getTrips() + " trips";
+		String heading = (full.length() > 24 ? chain.getKit().getName() : full).toUpperCase(Locale.ENGLISH);
 		if (view.state == View.State.WAITING_FOR_BANK)
 		{
 			crest.update(heading, null, 0, false, -1, "Open your bank to begin", null, Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.3), Theme.GOLD);
@@ -222,6 +231,31 @@ public class ProvisionerPanel extends PluginPanel
 			return true;
 		}
 		return false;
+	}
+
+	// The Tree tab.
+
+	/** Each supply as the tree of parts it is made from, root to leaves. */
+	private void rebuildTree()
+	{
+		StackPanel stack = new StackPanel(8, 8);
+		if (waiting(stack))
+		{
+			replace(treePage, stack);
+			return;
+		}
+		Chain chain = view.chain;
+		Step now = chain.current();
+		stack.add(Ui.wrapped("Each supply from the finished product down to what is gathered by hand. A part already stocked needs nothing beneath it.",
+			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		for (Map.Entry<Chain.Line, List<Tree.Node>> tree : Tree.of(chain).entrySet())
+		{
+			Chain.Line line = tree.getKey();
+			String trailing = line.getShort() <= 0 ? "stocked" : Format.amount(line.getShort()) + " short";
+			stack.add(new SectionHeader(view.name(line.getSupply()), trailing));
+			stack.add(new TreeCard(tree.getValue(), view, icons, now));
+		}
+		replace(treePage, stack);
 	}
 
 	// The Chain tab.

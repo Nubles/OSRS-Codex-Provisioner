@@ -33,7 +33,7 @@ class NowCard extends Card
 			Integer have = view.level(req.getSkill());
 			boolean met = req.met(view.levels);
 			String text = Ui.skill(req.getSkill()) + " " + req.getLevel() + (req.isSoft() ? " to grow" : "")
-				+ (have == null ? "" : met ? (req.isSoft() ? "; you have " : "  -  you have ") + have : "  -  you have " + have + ", " + (req.getLevel() - have) + " to go");
+				+ (have == null ? "" : met ? (req.isSoft() ? "; you have " : " \u00b7 you have ") + have : " \u00b7 you have " + have + ", " + (req.getLevel() - have) + " to go");
 			stack.add(new Fact(met ? Fact.TICK : Fact.CROSS, text, req.isSoft() ? Theme.TEXT_FAINT : met ? Theme.TEAL : Theme.BLOOD));
 		}
 		for (Map.Entry<Integer, Integer> in : step.getRecipe().getInputs().entrySet())
@@ -59,7 +59,7 @@ class NowCard extends Card
 		{
 			int used = herbs.getPatchesUsed();
 			String planted = used == 1 ? "1 patch" : used + " patches";
-			stack.add(new Fact(Fact.CLOCK, View.runs(herbs.getRuns()) + " on " + planted + "  -  "
+			stack.add(new Fact(Fact.CLOCK, View.runs(herbs.getRuns()) + " on " + planted + " \u00b7 "
 				+ Format.estimate(herbs.getSoonestMs()), Theme.TEXT_MUTED,
 				"About " + View.runs(herbs.getRuns()) + " planting " + (used < herbs.getPatches() ? planted + " of your " + herbs.getPatches() : "all " + planted)
 					+ "; herbs take 80 minutes to grow, so "
@@ -121,7 +121,21 @@ class NowCard extends Card
 			int tx = Well.SIZE + 12;
 
 			String left = step.getState() == Step.State.LOCKED ? "Lv " + step.getUnmet().getLevel() : Format.amount(step.getNet());
-			int lw = Crest.paintLarge(g, left, w - largeWidth(g, left), top + 2, color);
+			// The count is drawn large unless that would cut the name short; then the name comes first.
+			int large = largeWidth(g, left);
+			boolean squeezed = g.getFontMetrics(Theme.body()).stringWidth(name) > w - tx - large - 6;
+			int lw;
+			if (squeezed)
+			{
+				g.setFont(Theme.title());
+				FontMetrics fig = g.getFontMetrics();
+				lw = fig.stringWidth(left);
+				Ui.shadowed(g, left, w - lw, top + fig.getAscent() + 6, color);
+			}
+			else
+			{
+				lw = Crest.paintLarge(g, left, w - large, top + 2, color);
+			}
 			g.setFont(Theme.small());
 			g.setColor(Theme.TEXT_FAINT);
 			String to = step.getState() == Step.State.LOCKED ? "locked" : "to go";
@@ -130,9 +144,15 @@ class NowCard extends Card
 			g.setFont(Theme.small());
 			g.setColor(color);
 			g.drawString(step.getRecipe().getVerb().label().toUpperCase(Locale.ENGLISH), tx, top + small.getAscent() + 1);
+			// A long name beside a big count steps down to the body face before it is cut short.
+			int room = w - tx - lw - 6;
 			g.setFont(Theme.title());
+			if (g.getFontMetrics().stringWidth(name) > room)
+			{
+				g.setFont(Theme.body());
+			}
 			FontMetrics bold = g.getFontMetrics();
-			Ui.shadowed(g, Ui.clip(name, bold, w - tx - lw - 6), tx, top + small.getHeight() + bold.getAscent() + 2, Theme.TEXT);
+			Ui.shadowed(g, Ui.clip(name, bold, room), tx, top + small.getHeight() + g.getFontMetrics(Theme.title()).getAscent() + 2, Theme.TEXT);
 
 			int by = top + Well.SIZE + 8;
 			Bar.paint(g, 0, by, w, 5, step.progress());

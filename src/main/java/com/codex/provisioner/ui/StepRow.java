@@ -150,7 +150,7 @@ class StepRow extends JComponent
 				{
 					return View.runs(herbs.getRuns());
 				}
-				return estimate >= 0 ? text + "  -  " + Format.estimate(estimate) : text;
+				return estimate >= 0 ? text + " \u00b7 " + Format.estimate(estimate) : text;
 		}
 	}
 

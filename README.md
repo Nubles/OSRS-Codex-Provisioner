@@ -12,9 +12,12 @@ Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quarter
 
 ![Herb runs and trips ready](docs/screenshots/herb-runs.png) ![Ready for](docs/screenshots/stores-ready.png)
 
+![The tree of every supply](docs/screenshots/tree.png)
+
 ## What it does
 
 - **Chain tab.** The step in hand gets the most room: what to do, how many are left, a progress bar, the levels it asks for against yours, what goes in and how much of it you hold, and the tools to bring. Below it is every step, grouped by supply, from the first thing to gather to the finished potion, each with its state: done, ready, waiting on an earlier step, or locked behind a level.
+- **Tree tab.** Each supply drawn as the tree it is: the finished potion or fish at the top and, branching beneath it on gilt lines, everything that goes into it, down to what you gather by hand. Every part shows its picture ringed in its state's colour (the step in hand glows, ready in gold, waiting faint, locked in red, stocked with a green seal), what is done to it and how many are still to get. A part you already hold enough of is a leaf, since nothing beneath it is needed, and a part two potions share, such as vials of water, is opened once and named again where it comes back. Herbs still to grow say how many herb runs they take. Hover a tree for all of it in words.
 - **Stores tab.** Provision for 5, 10, 25, 50 or 100 trips. Each supply shows how much of the target you hold. Where a supply can be made more than one way (anglerfish, sharks, karambwans, monkfish, swordfish or lobsters for food; prayer potions or super restores for prayer; ruby or diamond bolts), you pick, and a red dot marks a choice whose chain your levels don't reach yet. Left alone, it picks the best one you can make. A gathering list sums up everything still to collect.
 - **Kits tab.** Your Codex Quartermaster kits, then nine presets (Vorkath, Zulrah, Barrows, General Graardor, Vardorvis, Nex, Theatre of Blood, a slayer task and Wintertodt), each with how many supplies are short and how many steps that takes.
 - **It counts what you already hold at every stage.** A bank full of clean ranarr needs no grimy ones; vials of water you already filled are taken off. Shared inputs, like vials of water across several potions, appear once with the total.

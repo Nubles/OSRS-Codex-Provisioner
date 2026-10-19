@@ -51,10 +51,14 @@ class SupplyCard extends Card
 		south.add(Ui.wrapped(made, Theme.small(), Theme.TEXT_MUTED, width));
 		south.add(new Ledger(quote, bought));
 		south.add(Ui.wrapped(verdict(quote, bought), Theme.small(), Theme.TEXT_FAINT, width));
-		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-		buttons.setOpaque(false);
-		buttons.add(new CodexButton(bought ? "Make them instead" : "Buy them instead", false, () -> actions.buy(key, !bought)));
-		south.add(buttons);
+		// Something the exchange does not sell cannot be bought instead.
+		if (bought || quote.getBuy() >= 0)
+		{
+			JPanel buttons = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+			buttons.setOpaque(false);
+			buttons.add(new CodexButton(bought ? "Make them instead" : "Buy them instead", false, () -> actions.buy(key, !bought)));
+			south.add(buttons);
+		}
 		add(south, BorderLayout.SOUTH);
 	}
 

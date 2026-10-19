@@ -383,7 +383,8 @@ public class ProvisionerPanel extends PluginPanel
 			JPanel time = new JPanel(new BorderLayout());
 			time.setOpaque(false);
 			boolean shop = s.getRecipe().getVerb() == com.codex.provisioner.core.Verb.BUY;
-			time.add(Ui.label(shop ? "shop" : Format.estimate(p.getMs()), Theme.small(), shop ? Theme.TEXT_FAINT : Theme.GOLD), BorderLayout.NORTH);
+			// Buying is quickly done, so it is given no time of its own.
+			time.add(Ui.label(shop ? "" : Format.estimate(p.getMs()), Theme.small(), Theme.GOLD), BorderLayout.NORTH);
 			row.add(time, BorderLayout.EAST);
 			rows.add(row);
 		}

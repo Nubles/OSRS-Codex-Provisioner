@@ -50,6 +50,12 @@ class SupplyCard extends Card
 		StackPanel south = new StackPanel(4, 0);
 		south.add(Ui.wrapped(made, Theme.small(), Theme.TEXT_MUTED, width));
 		south.add(new Ledger(quote, bought));
+		if (quote.getMake() >= 0 && quote.getFromBank() > 0)
+		{
+			// Making's coins are only what is still to buy; what comes out of the bank is said apart.
+			south.add(Ui.wrapped("Make is coins still to spend. It also uses " + Format.coins(quote.getFromBank())
+				+ " of what you hold, at what it would sell for.", Theme.small(), Theme.TEAL, width));
+		}
 		south.add(Ui.wrapped(verdict(quote, bought), Theme.small(), Theme.TEXT_FAINT, width));
 		// Something the exchange does not sell cannot be bought instead.
 		if (bought || quote.getBuy() >= 0)
@@ -76,6 +82,10 @@ class SupplyCard extends Card
 				? "Making would save " + Format.coins(q.saving()) + (xp.isEmpty() ? "." : " and give " + xp + ".")
 				: "Buying is cheaper by " + Format.coins(-q.saving()) + ".";
 		}
+		if (q.getFromBank() > 0)
+		{
+			return withHeld(q, xp);
+		}
 		if (q.makeIsCheaper())
 		{
 			return "Making saves " + Format.coins(q.saving()) + (xp.isEmpty() ? "." : " and gives " + xp + ".");
@@ -86,6 +96,26 @@ class SupplyCard extends Card
 				+ " gp a point for " + xp + ".";
 		}
 		return "Buying is cheaper by " + Format.coins(-q.saving()) + ".";
+	}
+
+	/**
+	 * The verdict when making uses ingredients already held. Those cost no coins, but buying
+	 * finished would leave them to sell, so the fair comparison counts them at their sale value;
+	 * the coins alone are said too when the two disagree.
+	 */
+	static String withHeld(Costing.Quote q, String xp)
+	{
+		String gives = xp.isEmpty() ? "." : ", and gives " + xp + ".";
+		if (q.makeIsCheaper())
+		{
+			return "Making saves " + Format.coins(q.saving()) + " even counting what your ingredients would sell for" + gives;
+		}
+		if (q.cashSaving() > 0)
+		{
+			return "Making spends " + Format.coins(q.cashSaving()) + " fewer coins, but selling what you hold and buying them finished comes out "
+				+ Format.coins(-q.saving()) + " ahead.";
+		}
+		return "Buying is cheaper by " + Format.coins(-q.cashSaving()) + ", even counting what you hold as free.";
 	}
 
 	/** "4.2k Herblore xp", or "4.2k Herblore and 2k Cooking xp". */
@@ -149,7 +179,7 @@ class SupplyCard extends Card
 			{
 				// The way the chain is planned: a small gilt pip beside the label.
 				g.setColor(Theme.GOLD);
-				g.fillOval(x + w - 11, 6, 5, 5);
+				g.fillOval(x + 6 + small.stringWidth(label) + 4, 6, 5, 5);
 			}
 			g.setFont(Theme.title());
 			FontMetrics bold = g.getFontMetrics();

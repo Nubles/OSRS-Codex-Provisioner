@@ -13,7 +13,6 @@ Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quarter
 
 <p align="center">
   <img src="docs/screenshots/stores-trade.png" width="225" alt="Buy or make">
-  <img src="docs/screenshots/trip.png" width="225" alt="Each trip to the bank">
   <img src="docs/screenshots/herb-runs.png" width="225" alt="Herb runs and trips ready">
 </p>
 

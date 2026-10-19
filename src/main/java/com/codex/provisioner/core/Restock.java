@@ -69,6 +69,8 @@ public final class Restock
 		{
 			return null;
 		}
+		// Never more than the trips the plan is for: stocking for one trip asks for no more.
+		below = Math.min(below, chain.getTrips());
 		Chain.Line first = chain.limiting();
 		if (first == null || first.tripsHeld() >= below)
 		{

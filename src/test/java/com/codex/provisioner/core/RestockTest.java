@@ -36,6 +36,9 @@ public class RestockTest
 		// Stocked for the mark, or the warning off: nothing.
 		assertNull(Restock.warning(vorkath(8), 3, NAMES));
 		assertNull(Restock.warning(vorkath(0), 0, NAMES));
+		// A mark above the plan's own trips asks no more than the plan: ten trips here, so 12 reads as 10.
+		assertEquals("Ready for 2 trips of Vorkath. First to run out: prayer and restores; 26 more prayer potion(3) cover 10 trips.",
+			Restock.warning(vorkath(6), 12, NAMES));
 	}
 
 	@Test

@@ -1,7 +1,9 @@
 package com.codex.provisioner;
 
 import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.Kit;
+import com.codex.provisioner.core.Prices;
 import com.codex.provisioner.core.Provisions;
 import com.codex.provisioner.core.Quarters;
 import com.codex.provisioner.core.Step;
@@ -20,9 +22,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import javax.inject.Inject;
 import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
@@ -31,18 +36,22 @@ import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
+import net.runelite.api.ScriptID;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.Skill;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -50,6 +59,7 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
@@ -83,6 +93,10 @@ public class CodexProvisionerPlugin extends Plugin
 	private static final int[] POUCH_AMOUNTS = {
 		VarbitID.RUNE_POUCH_QUANTITY_1, VarbitID.RUNE_POUCH_QUANTITY_2, VarbitID.RUNE_POUCH_QUANTITY_3,
 		VarbitID.RUNE_POUCH_QUANTITY_4, VarbitID.RUNE_POUCH_QUANTITY_5, VarbitID.RUNE_POUCH_QUANTITY_6
+	};
+	private static final int[] POTION_STORE_VARS = {
+		VarPlayerID.POTIONSTORE_BASE_VAR_1, VarPlayerID.POTIONSTORE_BASE_VAR_2, VarPlayerID.POTIONSTORE_BASE_VAR_3,
+		VarPlayerID.POTIONSTORE_BASE_VAR_4, VarPlayerID.POTIONSTORE_BASE_VAR_5, VarPlayerID.POTIONSTORE_BASE_VAR_6
 	};
 	private static final int[] POUCHES = {
 		ItemID.BH_RUNE_POUCH, ItemID.BH_RUNE_POUCH_TROUVER, ItemID.DIVINE_RUNE_POUCH, ItemID.DIVINE_RUNE_POUCH_TROUVER
@@ -130,6 +144,13 @@ public class CodexProvisionerPlugin extends Plugin
 	private Map<Integer, Step.State> lastStates;
 	private String lastPlan;
 	private boolean bankOpen;
+	/** The potion storage needs reading on the next tick the bank is open. */
+	private boolean readStorage;
+	/** The varps the potion storage keeps its counts in, taken from the storage widget as RuneLite's bank tags do. */
+	private Set<Integer> storageVars;
+	/** Ticks after the bank closes in which a storage change, such as a last withdrawal, is still read. */
+	private int storageGrace;
+	private final Prices prices = id -> itemManager.getItemPrice(id);
 	private boolean dirty;
 	private boolean unsaved;
 	private int ticks;
@@ -194,11 +215,36 @@ public class CodexProvisionerPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onClientShutdown(ClientShutdown event)
+	{
+		// ConfigManager writes its changes to disk in this same event, before a save queued on the
+		// client thread runs, so a save made here has to be sent on by hand or it is never written.
+		CompletableFuture<Void> done = new CompletableFuture<>();
+		clientThread.invokeLater(() ->
+		{
+			try
+			{
+				if (save())
+				{
+					configManager.sendConfig();
+				}
+			}
+			finally
+			{
+				done.complete(null);
+			}
+		});
+		event.waitFor(done);
+	}
+
+	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
 			bankOpen = false;
+			readStorage = false;
+			storageGrace = 0;
 			save();
 			publish();
 		}
@@ -215,6 +261,8 @@ public class CodexProvisionerPlugin extends Plugin
 		save();
 		loadProfile();
 		bankOpen = false;
+		readStorage = false;
+		storageGrace = 0;
 		carried = client.getGameState() == GameState.LOGGED_IN ? readCarried() : Collections.emptyMap();
 		publish();
 	}
@@ -274,6 +322,7 @@ public class CodexProvisionerPlugin extends Plugin
 		if (event.getGroupId() == InterfaceID.BANKMAIN)
 		{
 			bankOpen = true;
+			readStorage = true;
 			dirty = true;
 		}
 	}
@@ -284,7 +333,26 @@ public class CodexProvisionerPlugin extends Plugin
 		if (event.getGroupId() == InterfaceID.BANKMAIN && event.isUnload())
 		{
 			bankOpen = false;
+			// A withdrawal made just before closing reaches the storage varps a tick later.
+			storageGrace = 2;
 			dirty = true;
+		}
+	}
+
+	@Subscribe
+	public void onVarbitChanged(VarbitChanged event)
+	{
+		// The per-potion varps change when doses go in or out; the base vars when doses are rearranged.
+		int id = event.getVarpId();
+		Set<Integer> vars = storageVars;
+		boolean storage = vars != null && vars.contains(id);
+		for (int varp : POTION_STORE_VARS)
+		{
+			storage |= id == varp;
+		}
+		if (storage && (bankOpen || storageGrace > 0))
+		{
+			readStorage = true;
 		}
 	}
 
@@ -296,6 +364,22 @@ public class CodexProvisionerPlugin extends Plugin
 			return;
 		}
 		ticks++;
+		boolean iron = client.getVarbitValue(VarbitID.IRONMAN) > 0;
+		if (provisions.isIron() != iron)
+		{
+			provisions.setIron(iron);
+			unsaved = true;
+			dirty = true;
+		}
+		if (readStorage && (bankOpen || storageGrace > 0))
+		{
+			readStorage = false;
+			readPotionStorage();
+		}
+		if (storageGrace > 0 && !bankOpen)
+		{
+			storageGrace--;
+		}
 		if (unsaved && ticks % SAVE_TICKS == 0)
 		{
 			save();
@@ -303,6 +387,56 @@ public class CodexProvisionerPlugin extends Plugin
 		if (dirty)
 		{
 			publish();
+		}
+	}
+
+	/**
+	 * Reads the doses kept in the bank's potion storage, which the bank itself does not list, the
+	 * same way Codex Quartermaster and RuneLite's bank tags do: the game's own script says how many
+	 * doses each stored potion has, filed under the potion's 1-dose item. Only called on the client
+	 * thread with the bank open, or just after it closes.
+	 */
+	private void readPotionStorage()
+	{
+		EnumComposition potions = client.getEnum(EnumID.POTIONSTORE_POTIONS);
+		if (potions == null)
+		{
+			return;
+		}
+		if (storageVars == null)
+		{
+			Widget w = client.getWidget(InterfaceID.Bankmain.POTIONSTORE_ITEMS);
+			int[] trigger = w == null ? null : w.getVarTransmitTrigger();
+			if (trigger != null)
+			{
+				Set<Integer> vars = new HashSet<>();
+				for (int v : trigger)
+				{
+					vars.add(v);
+				}
+				storageVars = vars;
+			}
+		}
+		Map<Integer, Long> doses = new HashMap<>();
+		for (int potionEnum : potions.getIntVals())
+		{
+			EnumComposition potion = client.getEnum(potionEnum);
+			if (potion == null)
+			{
+				continue;
+			}
+			client.runScript(ScriptID.POTIONSTORE_DOSES, potionEnum);
+			int stored = client.getIntStack()[0];
+			int oneDose = potion.getIntValue(1);
+			if (stored > 0 && oneDose > 0)
+			{
+				doses.merge(oneDose, (long) stored, Long::sum);
+			}
+		}
+		if (provisions.observeStorage(doses))
+		{
+			unsaved = true;
+			dirty = true;
 		}
 	}
 
@@ -427,14 +561,16 @@ public class CodexProvisionerPlugin extends Plugin
 		}
 	}
 
-	private void save()
+	/** Writes to the profile if anything changed, and says whether it did. */
+	private boolean save()
 	{
 		if (profile == null || provisions == null || !unsaved)
 		{
-			return;
+			return false;
 		}
 		unsaved = false;
 		configManager.setConfiguration(CodexProvisionerConfig.GROUP, profile, PROVISIONS_KEY, gson.toJson(provisions));
+		return true;
 	}
 
 	private Kit activeKit(List<Kit> kits)
@@ -472,15 +608,17 @@ public class CodexProvisionerPlugin extends Plugin
 		}
 		List<Kit> kits = quarters.allKits();
 		Kit kit = activeKit(kits);
-		Chain chain = provisions.plan(kit, perTrip(kit), carried);
-		unsaved = true;
-		Map<Integer, Long> held = provisions.holdings(carried);
+		Map<Integer, Long> storageFallback = quarters.getStored();
+		Chain chain = provisions.plan(kit, perTrip(kit), carried, storageFallback);
+		unsaved |= provisions.baselinesChanged();
+		Map<Integer, Long> held = provisions.holdings(carried, storageFallback);
 
 		List<View.KitSummary> summaries = new ArrayList<>();
 		for (Kit k : kits)
 		{
 			Chain c = k == kit ? chain
-				: Chain.build(k, perTrip(k), provisions.getTrips(), provisions.getChoices(), held, provisions.levels(), Collections.emptyMap());
+				: Chain.build(k, perTrip(k), provisions.getTrips(), provisions.getChoices(), provisions.getBought(), held,
+					provisions.levels(), Collections.emptyMap());
 			int shortSupplies = 0;
 			for (Chain.Line l : c.getLines())
 			{
@@ -508,10 +646,35 @@ public class CodexProvisionerPlugin extends Plugin
 		if (provisions.hasBank())
 		{
 			announce(chain);
+			learnPace(chain, now);
+		}
+		// Buy or make, for accounts that can trade.
+		Map<String, Costing.Quote> quotes = new HashMap<>();
+		if (!provisions.isIron())
+		{
+			for (Chain.Line l : chain.getLines())
+			{
+				if (!l.getSupply().isItem() && l.getToMake() > 0)
+				{
+					quotes.put(l.getSupply().getKey(), Costing.quote(l.getProduct(), l.getToMake(), prices));
+				}
+			}
+		}
+		Map<Integer, Long> estimates = new HashMap<>();
+		Map<Integer, Boolean> measuredPace = new HashMap<>();
+		for (Step s : chain.getSteps())
+		{
+			if (s.getState() != Step.State.DONE)
+			{
+				estimates.put(s.getItem(), provisions.getPace().estimate(s));
+				measuredPace.put(s.getItem(), provisions.getPace().measured(s.getItem()) > 0);
+			}
 		}
 		View.State state = !provisions.hasBank() ? View.State.WAITING_FOR_BANK : View.State.READY;
 		View view = new View(state, chain, summaries, new HashMap<>(names), held, provisions.levels(), quarters.hasSavedKits(),
-			config.measured() ? quarters.measuredTrips(kit.getId()) : 0, provisions.getBankSeen(), bankOpen, now);
+			config.measured() ? quarters.measuredTrips(kit.getId()) : 0, provisions.getBankSeen(), bankOpen, now)
+			.trade(provisions.isIron(), provisions.getBought(), quotes)
+			.pace(estimates, measuredPace);
 
 		Step current = chain.current();
 		if (loggedIn && config.plaque() && provisions.hasBank() && current != null)
@@ -535,10 +698,31 @@ public class CodexProvisionerPlugin extends Plugin
 		}
 	}
 
+	/** Watches the steps shrink to learn how fast the player really works each one. */
+	private void learnPace(Chain chain, long now)
+	{
+		if (client.getGameState() != GameState.LOGGED_IN)
+		{
+			return;
+		}
+		Map<Integer, Long> nets = new HashMap<>();
+		Map<Integer, Integer> makes = new HashMap<>();
+		for (Step s : chain.getSteps())
+		{
+			nets.put(s.getItem(), s.getNet());
+			makes.put(s.getItem(), s.getRecipe().getMakes());
+		}
+		String plan = chain.getKit().getId() + "/" + chain.getTrips() + "/" + provisions.getChoices() + "/" + provisions.getBought();
+		if (provisions.getPace().observe(plan, nets, makes, now))
+		{
+			unsaved = true;
+		}
+	}
+
 	/** Says in the chat box when a step finishes, and what comes next. */
 	private void announce(Chain chain)
 	{
-		String plan = chain.getKit().getId() + "/" + chain.getTrips() + "/" + provisions.getChoices();
+		String plan = chain.getKit().getId() + "/" + chain.getTrips() + "/" + provisions.getChoices() + "/" + provisions.getBought();
 		Map<Integer, Step.State> states = new HashMap<>();
 		for (Step s : chain.getSteps())
 		{
@@ -608,6 +792,12 @@ public class CodexProvisionerPlugin extends Plugin
 		public void choose(String supply, int product)
 		{
 			change(() -> provisions.choose(supply, product));
+		}
+
+		@Override
+		public void buy(String supply, boolean buy)
+		{
+			change(() -> provisions.setBought(supply, buy));
 		}
 
 		@Override

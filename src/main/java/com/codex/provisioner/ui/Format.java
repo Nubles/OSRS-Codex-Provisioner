@@ -136,6 +136,25 @@ public final class Format
 		return minutes / 60 + "h " + minutes % 60 + "m";
 	}
 
+	/** A rough time to come: "<1m", "25m", "3h 10m", "41h". */
+	public static String estimate(long ms)
+	{
+		long minutes = Math.round(ms / 60_000.0);
+		if (minutes < 1)
+		{
+			return "<1m";
+		}
+		if (minutes < 60)
+		{
+			return minutes + "m";
+		}
+		if (minutes < 10 * 60)
+		{
+			return minutes / 60 + "h " + minutes % 60 + "m";
+		}
+		return Math.round(minutes / 60.0) + "h";
+	}
+
 	/** "14:02" in the player's own time. */
 	public static String time(long epochMs)
 	{

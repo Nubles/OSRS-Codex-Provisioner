@@ -50,6 +50,13 @@ class NowCard extends Card
 			stack.add(new Fact(has ? Fact.TICK : Fact.CROSS, "Bring a " + view.name(tool).toLowerCase(Locale.ENGLISH) + (has ? "" : "; none in your bank"),
 				has ? Theme.TEAL : Theme.EMBER));
 		}
+		long time = view.estimate(step.getItem());
+		if (time >= 0 && step.getState() != Step.State.LOCKED && step.getRecipe().getVerb() != com.codex.provisioner.core.Verb.BUY)
+		{
+			boolean own = view.ownPace(step.getItem());
+			stack.add(new Fact(Fact.CLOCK, "About " + Format.estimate(time) + (own ? " at your pace" : " at a typical pace"),
+				own ? Theme.TEAL : Theme.TEXT_FAINT));
+		}
 		if (step.getState() == Step.State.READY && !step.getRecipe().isSource() && step.getCanNow() < step.getNet())
 		{
 			stack.add(Ui.wrapped("What you hold makes " + Format.amount(step.getCanNow()) + " now; the rest waits on earlier steps.",
@@ -131,6 +138,7 @@ class NowCard extends Card
 		static final int TICK = 0;
 		static final int CROSS = 1;
 		static final int DIAMOND = 2;
+		static final int CLOCK = 3;
 
 		private final int mark;
 		private final String text;
@@ -169,6 +177,12 @@ class NowCard extends Card
 			{
 				g.drawLine(2, cy - 3, 7, cy + 2);
 				g.drawLine(7, cy - 3, 2, cy + 2);
+			}
+			else if (mark == CLOCK)
+			{
+				g.draw(new java.awt.geom.Ellipse2D.Float(1, cy - 3.5f, 7, 7));
+				g.drawLine(4, cy, 4, cy - 2);
+				g.drawLine(4, cy, 6, cy);
 			}
 			else
 			{

@@ -9,5 +9,8 @@ public interface Actions
 
 	void choose(String supply, int product);
 
+	/** Buy a supply finished on the Grand Exchange, or go back to making it. */
+	void buy(String supply, boolean buy);
+
 	void restart();
 }

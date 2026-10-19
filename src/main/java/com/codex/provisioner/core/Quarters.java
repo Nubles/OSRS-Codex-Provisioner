@@ -18,6 +18,8 @@ public class Quarters
 	private List<Kit> kits = new ArrayList<>();
 	private String active;
 	private Map<String, Usage> usage;
+	/** Potion storage doses as Quartermaster last read them, by 1-dose item. */
+	private Map<Integer, Long> stored;
 
 	static final class Usage
 	{
@@ -68,6 +70,12 @@ public class Quarters
 			return Collections.emptyMap();
 		}
 		return Collections.unmodifiableMap(u.perTrip);
+	}
+
+	/** The potion storage as Quartermaster last read it, or null without Quartermaster. */
+	public Map<Integer, Long> getStored()
+	{
+		return stored;
 	}
 
 	public int measuredTrips(String kitId)

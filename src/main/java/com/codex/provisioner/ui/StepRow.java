@@ -25,6 +25,8 @@ class StepRow extends JComponent
 	private final boolean current;
 	private final boolean last;
 	private final ItemIcons icons;
+	/** Time left on this step, or -1 when it cannot be told. */
+	private final long estimate;
 
 	StepRow(Step step, View view, boolean current, boolean last, ItemIcons icons)
 	{
@@ -33,10 +35,13 @@ class StepRow extends JComponent
 		this.current = current;
 		this.last = last;
 		this.icons = icons;
+		this.estimate = view.estimate(step.getItem());
 		setOpaque(false);
 		setPreferredSize(new Dimension(10, HEIGHT));
+		String time = estimate < 0 || step.getState() == Step.State.DONE ? ""
+			: "<br>About " + Format.estimate(estimate) + (view.ownPace(step.getItem()) ? " at your own pace" : " at a typical pace");
 		setToolTipText("<html><b>" + Ui.escape(step.getRecipe().getVerb().label() + " " + name) + "</b><br>"
-			+ Ui.escape(step.getRecipe().getHow()) + "</html>");
+			+ Ui.escape(step.getRecipe().getHow()) + time + "</html>");
 	}
 
 	static Color color(Step step, boolean current)
@@ -132,7 +137,8 @@ class StepRow extends JComponent
 				return "waits on an earlier step";
 			default:
 				long done = step.getDone();
-				return done > 0 ? Format.amount(done) + " of " + Format.amount(step.getBaseline()) : Format.amount(step.getNet()) + " to go";
+				String text = done > 0 ? Format.amount(done) + " of " + Format.amount(step.getBaseline()) : Format.amount(step.getNet()) + " to go";
+				return estimate >= 0 ? text + "  -  " + Format.estimate(estimate) : text;
 		}
 	}
 

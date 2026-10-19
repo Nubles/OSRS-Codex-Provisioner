@@ -226,6 +226,30 @@ public class ProvisionerPanel extends PluginPanel
 			card.add(rows, BorderLayout.CENTER);
 			stack.add(card);
 		}
+		long work = 0;
+		int untimed = 0;
+		for (Step s : chain.getSteps())
+		{
+			if (s.getState() == Step.State.DONE)
+			{
+				continue;
+			}
+			long t = view.estimate(s.getItem());
+			if (t >= 0)
+			{
+				work += t;
+			}
+			else
+			{
+				untimed++;
+			}
+		}
+		if (work > 0)
+		{
+			String time = "About " + Format.estimate(work) + " of work left"
+				+ (untimed == 0 ? "." : ", plus " + untimed + (untimed == 1 ? " step" : " steps") + " that hang on farm runs, drops or luck.");
+			stack.add(Ui.wrapped(time, Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
+		}
 		String foot = view.measured >= 2
 			? "Planned from " + view.measured + " trips Codex Quartermaster measured with this kit."
 			: "Counts what your bank and inventory hold at every stage, so each step shrinks as you work.";
@@ -297,7 +321,9 @@ public class ProvisionerPanel extends PluginPanel
 		buttons.setOpaque(false);
 		buttons.add(new CodexButton("Restart progress bars", false, actions::restart));
 		stack.add(buttons);
-		stack.add(Ui.wrapped("Pick what each supply is made as; a red dot means a level in its chain is not reached yet. Ironman friendly: no step needs trading with anyone.",
+		stack.add(Ui.wrapped(view.iron
+				? "Pick what each supply is made as; a red dot means a level in its chain is not reached yet. Iron account: no step needs trading with anyone."
+				: "Pick what each supply is made as; a red dot means a level in its chain is not reached yet. Making is priced from bought ingredients at Grand Exchange prices.",
 			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		replace(storesPage, stack);
 	}

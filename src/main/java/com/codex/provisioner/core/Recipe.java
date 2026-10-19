@@ -14,6 +14,9 @@ import net.runelite.api.Skill;
  */
 public final class Recipe
 {
+	/** Buying a stack is a few seconds at the exchange, whatever its size. */
+	static final int BOUGHT_RATE = 100_000;
+
 	private final int output;
 	private final Verb verb;
 	private int makes = 1;
@@ -21,6 +24,9 @@ public final class Recipe
 	private final List<Req> reqs = new ArrayList<>();
 	private final List<Integer> tools = new ArrayList<>();
 	private String how;
+	private Skill xpSkill;
+	private double xp;
+	private int rate;
 
 	Recipe(Verb verb, int output)
 	{
@@ -32,6 +38,27 @@ public final class Recipe
 	static Recipe stock(int itemId)
 	{
 		return new Recipe(Verb.STOCK, itemId).how("Bring these as they are; there is nothing to make.");
+	}
+
+	/** A finished supply bought whole on the Grand Exchange instead of made. */
+	static Recipe buy(int itemId)
+	{
+		return new Recipe(Verb.BUY, itemId).how("Buy them on the Grand Exchange.").rate(BOUGHT_RATE);
+	}
+
+	/** Experience one go gives. */
+	Recipe xp(Skill skill, double amount)
+	{
+		xpSkill = skill;
+		xp = amount;
+		return this;
+	}
+
+	/** A typical number of items an hour, banking included, for estimates before the player's own pace is known. */
+	Recipe rate(int perHour)
+	{
+		rate = perHour;
+		return this;
 	}
 
 	Recipe makes(int count)
@@ -104,6 +131,24 @@ public final class Recipe
 	public String getHow()
 	{
 		return how;
+	}
+
+	/** The skill one go trains, or null. */
+	public Skill getXpSkill()
+	{
+		return xpSkill;
+	}
+
+	/** Experience one go gives, or 0. */
+	public double getXp()
+	{
+		return xp;
+	}
+
+	/** Typical items an hour, or 0 when it depends too much on luck or farm runs to say. */
+	public int getRate()
+	{
+		return rate;
 	}
 
 	public boolean isSource()

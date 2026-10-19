@@ -1,11 +1,14 @@
 package com.codex.provisioner.ui;
 
 import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.Kit;
 import com.codex.provisioner.core.Supply;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.runelite.api.Skill;
 
 /** Everything the panel shows, worked out on the client thread and handed over whole. */
@@ -46,6 +49,15 @@ public final class View
 	final long bankSeen;
 	final boolean bankOpen;
 	final long now;
+	/** An iron account, which makes everything and is shown no prices. */
+	boolean iron = true;
+	Set<String> bought = Collections.emptySet();
+	/** Buy or make for each supply still to fill, for accounts that can trade. */
+	Map<String, Costing.Quote> quotes = Collections.emptyMap();
+	/** Each open step's time left in milliseconds, -1 when it cannot be told. */
+	Map<Integer, Long> estimates = Collections.emptyMap();
+	/** Whether a step's estimate comes from the player's own pace rather than a typical one. */
+	Map<Integer, Boolean> measuredPace = Collections.emptyMap();
 
 	public View(State state, Chain chain, List<KitSummary> kits, Map<Integer, String> names, Map<Integer, Long> held,
 		Map<Skill, Integer> levels, boolean quartermaster, int measured, long bankSeen, boolean bankOpen, long now)
@@ -67,6 +79,32 @@ public final class View
 	{
 		return new View(State.LOGGED_OUT, null, Collections.emptyList(), Collections.emptyMap(), Collections.emptyMap(),
 			Collections.emptyMap(), false, 0, 0, false, 0);
+	}
+
+	public View trade(boolean iron, Set<String> bought, Map<String, Costing.Quote> quotes)
+	{
+		this.iron = iron;
+		this.bought = bought == null ? Collections.emptySet() : new HashSet<>(bought);
+		this.quotes = quotes == null ? Collections.emptyMap() : quotes;
+		return this;
+	}
+
+	public View pace(Map<Integer, Long> estimates, Map<Integer, Boolean> measured)
+	{
+		this.estimates = estimates == null ? Collections.emptyMap() : estimates;
+		this.measuredPace = measured == null ? Collections.emptyMap() : measured;
+		return this;
+	}
+
+	/** A step's time left, or -1 when it cannot be told. */
+	long estimate(int itemId)
+	{
+		return estimates.getOrDefault(itemId, -1L);
+	}
+
+	boolean ownPace(int itemId)
+	{
+		return measuredPace.getOrDefault(itemId, false);
 	}
 
 	String name(int itemId)

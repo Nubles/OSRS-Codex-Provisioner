@@ -1,6 +1,9 @@
 package com.codex.provisioner.core;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Map;
 import net.runelite.api.Skill;
 
@@ -20,6 +23,14 @@ public class Provisions
 	private Map<String, Integer> choices = new HashMap<>();
 	private Map<Integer, Long> baselines = new HashMap<>();
 	private Map<String, Integer> levels = new HashMap<>();
+	/** Potion doses in the bank's potion storage, by each potion's 1-dose item; null until first read. */
+	private Map<Integer, Long> stored;
+	/** Supplies bought finished on the Grand Exchange rather than made. */
+	private Set<String> bought = new HashSet<>();
+	/** An iron account, remembered so the panel stays right while logged out. */
+	private boolean iron;
+	private Pace pace = new Pace();
+	private transient boolean baselinesChanged;
 
 	public Map<Integer, Long> getBank()
 	{
@@ -42,12 +53,73 @@ public class Provisions
 		bankSeen = now;
 	}
 
-	/** The bank as last seen and what is carried, together. */
+	/** The bank as last seen, its potion storage, and what is carried, together. */
 	public Map<Integer, Long> holdings(Map<Integer, Long> carried)
+	{
+		return holdings(carried, null);
+	}
+
+	/**
+	 * @param fallback potion storage to count until the Provisioner has read it itself, such as
+	 *     what Codex Quartermaster last saw; null for none
+	 */
+	public Map<Integer, Long> holdings(Map<Integer, Long> carried, Map<Integer, Long> fallback)
 	{
 		Map<Integer, Long> all = new HashMap<>(bank);
 		carried.forEach((id, q) -> all.merge(id, q, Long::sum));
+		Map<Integer, Long> doses = stored != null ? stored : fallback;
+		if (doses != null)
+		{
+			// Filed under the 1-dose potion, one each, so they count as doses toward their supply.
+			doses.forEach((id, q) -> all.merge(id, q, Long::sum));
+		}
 		return all;
+	}
+
+	/** @return true when the doses in potion storage changed */
+	public boolean observeStorage(Map<Integer, Long> doses)
+	{
+		if (doses.equals(stored))
+		{
+			return false;
+		}
+		stored = new HashMap<>(doses);
+		return true;
+	}
+
+	public Map<Integer, Long> getStored()
+	{
+		return stored;
+	}
+
+	public boolean isIron()
+	{
+		return iron;
+	}
+
+	public void setIron(boolean iron)
+	{
+		this.iron = iron;
+	}
+
+	/** Supplies bought finished; an iron account buys none, whatever was picked before. */
+	public Set<String> getBought()
+	{
+		return iron ? Collections.emptySet() : bought;
+	}
+
+	/** Buys a supply finished instead of making it, or goes back to making it. */
+	public void setBought(String supply, boolean buy)
+	{
+		if (buy ? bought.add(supply) : bought.remove(supply))
+		{
+			baselines.clear();
+		}
+	}
+
+	public Pace getPace()
+	{
+		return pace;
 	}
 
 	public String getKit()
@@ -132,7 +204,13 @@ public class Provisions
 	/** Works out the chain and remembers the most each step has had to go. */
 	public Chain plan(Kit kit, Map<String, Double> perTrip, Map<Integer, Long> carried)
 	{
-		Chain chain = Chain.build(kit, perTrip, trips, choices, holdings(carried), levels(), baselines);
+		return plan(kit, perTrip, carried, null);
+	}
+
+	/** @param fallback potion storage to count until it has been read here, or null */
+	public Chain plan(Kit kit, Map<String, Double> perTrip, Map<Integer, Long> carried, Map<Integer, Long> fallback)
+	{
+		Chain chain = Chain.build(kit, perTrip, trips, choices, getBought(), holdings(carried, fallback), levels(), baselines);
 		Map<Integer, Long> next = new HashMap<>();
 		for (Step s : chain.getSteps())
 		{
@@ -141,8 +219,15 @@ public class Provisions
 				next.put(s.getItem(), s.getBaseline());
 			}
 		}
+		baselinesChanged = !next.equals(baselines);
 		baselines = next;
 		return chain;
+	}
+
+	/** Whether the last plan moved a progress bar's end, which is worth saving. */
+	public boolean baselinesChanged()
+	{
+		return baselinesChanged;
 	}
 
 	/** Restores what saved data can leave out. */
@@ -164,6 +249,11 @@ public class Provisions
 		{
 			levels = new HashMap<>();
 		}
+		if (bought == null)
+		{
+			bought = new HashSet<>();
+		}
+		pace = pace == null ? new Pace() : pace.repair();
 		if (trips <= 0)
 		{
 			trips = DEFAULT_TRIPS;

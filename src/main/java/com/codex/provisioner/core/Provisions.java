@@ -357,7 +357,9 @@ public class Provisions
 			Provisions whole = gson.fromJson(saved, Provisions.class);
 			if (whole != null)
 			{
-				return new Loaded(whole.repair(now), false);
+				// It read, but a field a later version keeps would be dropped by the next save.
+				whole.repair(now);
+				return new Loaded(whole, Unread.any(gson, saved, whole));
 			}
 		}
 		catch (RuntimeException e)

@@ -216,6 +216,27 @@ public class DamagedSavesTest
 	}
 
 	@Test
+	public void aLaterVersionsSaveIsSetAsideNotQuietlyDropped()
+	{
+		String own = ownSave();
+		assertFalse(Provisions.read(GSON, own, NOW).damaged);
+		// Each reads without an error, but the next save would drop what this version does not know.
+		String[] later = {
+			own.replaceFirst("^\\{", "{\"version\":2,\"shelf\":{\"a\":[1,{\"b\":2}]},"),
+			own.replaceFirst("\"pace\":\\{", "\"pace\":{\"mood\":\"glad\","),
+			own.replaceFirst("\"levels\":\\{", "\"levels\":{\"Sailing\":-3,"),
+		};
+		for (String s : later)
+		{
+			Provisions.Loaded read = Provisions.read(GSON, s, NOW);
+			assertTrue(s.substring(0, 60), read.damaged);
+			assertEquals(4, read.provisions.getBank().size());
+			assertEquals("kit:1", read.provisions.getKit());
+			assertFalse(Provisions.read(GSON, GSON.toJson(read.provisions), NOW).damaged);
+		}
+	}
+
+	@Test
 	public void extremeAccountsDrawAndAreQuickOnTheClientThread()
 	{
 		// A maxed account with a full bank of 1,500 kinds of item, thirty kits of every supply and a thousand trips.
@@ -255,14 +276,16 @@ public class DamagedSavesTest
 			work(maxed, many);
 		}
 		long best = Long.MAX_VALUE;
-		for (int i = 0; i < 5; i++)
+		for (int i = 0; i < 10; i++)
 		{
 			long t0 = System.nanoTime();
 			work(maxed, many);
 			best = Math.min(best, System.nanoTime() - t0);
 		}
 		System.out.println("Maxed account, 1,500 items, 30 kits: a refresh takes " + best / 1000 + "us");
-		assertTrue(best / 1000 + "us", best < 8_000_000L);
+		// About 4 ms here; the bound is loose so a busy build machine never fails it, yet a refresh grown
+		// many times over would.
+		assertTrue(best / 1000 + "us", best < 25_000_000L);
 
 		// A brand-new account: level 1 everywhere, no bank seen, no Quartermaster.
 		Provisions fresh = new Provisions();

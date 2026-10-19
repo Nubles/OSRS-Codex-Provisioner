@@ -57,9 +57,12 @@ class NowCard extends Card
 		com.codex.provisioner.core.HerbRuns.Plan herbs = view.herbRuns(step.getItem());
 		if (herbs != null)
 		{
-			stack.add(new Fact(Fact.CLOCK, View.runs(herbs.getRuns()) + " on " + herbs.getPatches() + " patches  -  "
+			int used = herbs.getPatchesUsed();
+			String planted = used == 1 ? "1 patch" : used + " patches";
+			stack.add(new Fact(Fact.CLOCK, View.runs(herbs.getRuns()) + " on " + planted + "  -  "
 				+ Format.estimate(herbs.getSoonestMs()), Theme.TEXT_MUTED,
-				"About " + View.runs(herbs.getRuns()) + " planting all " + herbs.getPatches() + " patches; herbs take 80 minutes to grow, so "
+				"About " + View.runs(herbs.getRuns()) + " planting " + (used < herbs.getPatches() ? planted + " of your " + herbs.getPatches() : "all " + planted)
+					+ "; herbs take 80 minutes to grow, so "
 					+ Format.estimate(herbs.getSoonestMs()) + " at the soonest. Set your patches and yield in the plugin's settings."));
 			long seeds = herbs.getSeeds();
 			long held = herbs.getSeedsHeld();

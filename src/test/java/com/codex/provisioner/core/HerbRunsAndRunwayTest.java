@@ -32,6 +32,11 @@ public class HerbRunsAndRunwayTest
 		assertEquals(2, p.getRuns());
 		assertEquals(8, p.getSeedsShort());
 		assertEquals(2 * HerbRuns.GROW_MS, p.getSoonestMs());
+		assertEquals(7, p.getPatchesUsed());
+		// 28 ranarr need only 4 seeds: one run plants 4 of the 7 patches, not all of them.
+		HerbRuns.Plan few = HerbRuns.plan(ItemID.UNIDENTIFIED_RANARR, 28, 7, 8, items());
+		assertEquals(1, few.getRuns());
+		assertEquals(4, few.getPatchesUsed());
 		// Exactly a patch's worth is one seed, not two.
 		assertEquals(1, HerbRuns.plan(ItemID.UNIDENTIFIED_TORSTOL, 8, 7, 8, items()).getSeeds());
 		assertEquals(0, HerbRuns.plan(ItemID.UNIDENTIFIED_TORSTOL, 8, 7, 8, items(ItemID.TORSTOL_SEED, 3)).getSeedsShort());

@@ -91,6 +91,12 @@ public final class HerbRuns
 			return patches;
 		}
 
+		/** Patches the fullest run plants: every patch, or fewer when the herbs need fewer seeds. */
+		public int getPatchesUsed()
+		{
+			return (int) Math.min(patches, seeds);
+		}
+
 		/** The soonest the last run can be picked, from planting the first: one growth between runs. */
 		public long getSoonestMs()
 		{

@@ -45,7 +45,7 @@ class StepRow extends JComponent
 			: "<br>About " + Format.estimate(estimate) + (view.ownPace(step.getItem()) ? " at your own pace" : " at a typical pace");
 		if (herbs != null && step.getState() != Step.State.DONE)
 		{
-			time = "<br>About " + View.runs(herbs.getRuns()) + " on " + herbs.getPatches() + " patches, "
+			time = "<br>About " + View.runs(herbs.getRuns()) + " on " + herbs.getPatchesUsed() + (herbs.getPatchesUsed() == 1 ? " patch, " : " patches, ")
 				+ Format.amount(herbs.getSeeds()) + " seeds";
 		}
 		setToolTipText("<html><b>" + Ui.escape(step.getRecipe().getVerb().label() + " " + view.name(step.getItem())) + "</b><br>"

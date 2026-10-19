@@ -18,33 +18,51 @@ public final class Format
 	{
 	}
 
-	/** "8,240", "41.2k", "412k", "1.24M". */
+	/**
+	 * As every Codex plugin writes figures: in full below 10,000, whole k below a million, M to one
+	 * decimal, B to two: "8,240", "41k", "412k", "1.2M", "2.10B". Rounding that reaches the next
+	 * unit is written in it, so 999,600 reads "1.0M", never "1000k".
+	 */
 	public static String amount(long n)
 	{
+		if (n < 0)
+		{
+			return "-" + amount(n == Long.MIN_VALUE ? Long.MAX_VALUE : -n);
+		}
 		if (n < 10_000)
 		{
 			return String.format(Locale.ENGLISH, "%,d", n);
 		}
-		if (n < 100_000)
+		long k = Math.round(n / 1_000.0);
+		if (k < 1_000)
 		{
-			return trim(n / 1_000.0, 1) + "k";
+			return k + "k";
 		}
-		if (n < 1_000_000)
+		long tenths = Math.round(n / 100_000.0);
+		if (tenths < 10_000)
 		{
-			return Math.round(n / 1_000.0) + "k";
+			return tenths / 10 + "." + tenths % 10 + "M";
 		}
-		if (n < 10_000_000)
-		{
-			return trim(n / 1_000_000.0, 2) + "M";
-		}
-		if (n < 1_000_000_000)
-		{
-			return trim(n / 1_000_000.0, 1) + "M";
-		}
-		return trim(n / 1_000_000_000.0, 2) + "B";
+		long hundredths = Math.round(n / 10_000_000.0);
+		return String.format(Locale.ENGLISH, "%,d", hundredths / 100) + "." + String.format(Locale.ENGLISH, "%02d", hundredths % 100) + "B";
 	}
 
-	/** Coins in the short form, negative amounts with a minus: "812.4M", "-45.2k". */
+	/**
+	 * Held against wanted, {held, wanted}, in the short form; while short, never two figures that
+	 * read the same, so 10,450 of 10,499 is written in full rather than "10k / 10k".
+	 */
+	public static String[] pair(long have, long want)
+	{
+		String h = amount(have);
+		String w = amount(want);
+		if (have < want && h.equals(w))
+		{
+			return new String[]{String.format(Locale.ENGLISH, "%,d", have), String.format(Locale.ENGLISH, "%,d", want)};
+		}
+		return new String[]{h, w};
+	}
+
+	/** Coins in the short form, negative amounts with a minus: "812.4M", "-45k". */
 	public static String coins(long gp)
 	{
 		return gp < 0 ? "-" + amount(-gp) : amount(gp);
@@ -89,7 +107,8 @@ public final class Format
 		{
 			return "<1%";
 		}
-		return Math.round(share * 100) + "%";
+		// Just short of whole is not whole: 99.6% reads 99%.
+		return Math.min(share < 1 ? 99 : 100, Math.round(share * 100)) + "%";
 	}
 
 	/** "just now", "12m ago", "3h ago", "2d ago". */
@@ -134,6 +153,25 @@ public final class Format
 			return minutes + "m";
 		}
 		return minutes / 60 + "h " + minutes % 60 + "m";
+	}
+
+	/** A rough time to come: "<1m", "25m", "3h 10m", "41h". */
+	public static String estimate(long ms)
+	{
+		long minutes = Math.round(ms / 60_000.0);
+		if (minutes < 1)
+		{
+			return "<1m";
+		}
+		if (minutes < 60)
+		{
+			return minutes + "m";
+		}
+		if (minutes < 10 * 60)
+		{
+			return minutes / 60 + "h " + minutes % 60 + "m";
+		}
+		return Math.round(minutes / 60.0) + "h";
 	}
 
 	/** "14:02" in the player's own time. */

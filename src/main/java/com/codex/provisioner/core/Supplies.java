@@ -149,7 +149,7 @@ public final class Supplies
 		GROUPS.put(key, new Supply(key, name, unit, icon, units));
 	}
 
-	/** The supply for a key: a pooled group, or a single item for "item:" keys. Null when unknown. */
+	/** The supply for a key: a pooled group, or a single item for "item:" keys. Null when unknown or no real item. */
 	public static Supply get(String key)
 	{
 		Supply group = GROUPS.get(key);
@@ -161,7 +161,9 @@ public final class Supplies
 		{
 			try
 			{
-				return Supply.item(Integer.parseInt(key.substring(5)));
+				int id = Integer.parseInt(key.substring(5));
+				// No item has an id below one; a damaged kit asking for one is not asked of the game.
+				return id > 0 ? Supply.item(id) : null;
 			}
 			catch (NumberFormatException e)
 			{

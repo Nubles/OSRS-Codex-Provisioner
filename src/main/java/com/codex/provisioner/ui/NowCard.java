@@ -32,8 +32,8 @@ class NowCard extends Card
 		{
 			Integer have = view.level(req.getSkill());
 			boolean met = req.met(view.levels);
-			String text = Ui.skill(req.getSkill()) + " " + req.getLevel() + (req.isSoft() ? " to grow your own" : "")
-				+ (have == null ? "" : met ? "  -  you have " + have : "  -  you have " + have + ", " + (req.getLevel() - have) + " to go");
+			String text = Ui.skill(req.getSkill()) + " " + req.getLevel() + (req.isSoft() ? " to grow" : "")
+				+ (have == null ? "" : met ? (req.isSoft() ? "; you have " : " \u00b7 you have ") + have : " \u00b7 you have " + have + ", " + (req.getLevel() - have) + " to go");
 			stack.add(new Fact(met ? Fact.TICK : Fact.CROSS, text, req.isSoft() ? Theme.TEXT_FAINT : met ? Theme.TEAL : Theme.BLOOD));
 		}
 		for (Map.Entry<Integer, Integer> in : step.getRecipe().getInputs().entrySet())
@@ -41,14 +41,41 @@ class NowCard extends Card
 			long held = view.held(in.getKey());
 			long need = (step.getNet() + step.getRecipe().getMakes() - 1) / step.getRecipe().getMakes() * in.getValue();
 			String each = in.getValue() == 1 && step.getRecipe().getMakes() == 1 ? "" : "  (" + in.getValue() + " a go)";
-			String text = view.name(in.getKey()) + each + ": " + Format.amount(held) + " of " + Format.amount(need);
+			String[] pair = Format.pair(held, need);
+			String text = view.name(in.getKey()) + each + ": " + pair[0] + " of " + pair[1];
 			stack.add(new Fact(Fact.DIAMOND, text, held >= need ? Theme.GREEN : held > 0 ? Theme.GOLD : Theme.TEXT_FAINT));
+		}
+		if (view.loads != null && step.getState() == Step.State.READY)
+		{
+			stack.add(new LoadStrip(step, view.loads, view, icons));
 		}
 		for (int tool : step.getRecipe().getTools())
 		{
 			boolean has = view.held(tool) > 0;
 			stack.add(new Fact(has ? Fact.TICK : Fact.CROSS, "Bring a " + view.name(tool).toLowerCase(Locale.ENGLISH) + (has ? "" : "; none in your bank"),
 				has ? Theme.TEAL : Theme.EMBER));
+		}
+		com.codex.provisioner.core.HerbRuns.Plan herbs = view.herbRuns(step.getItem());
+		if (herbs != null)
+		{
+			int used = herbs.getPatchesUsed();
+			String planted = used == 1 ? "1 patch" : used + " patches";
+			stack.add(new Fact(Fact.CLOCK, View.runs(herbs.getRuns()) + " on " + planted + " \u00b7 "
+				+ Format.estimate(herbs.getSoonestMs()), Theme.TEXT_MUTED,
+				"About " + View.runs(herbs.getRuns()) + " planting " + (used < herbs.getPatches() ? planted + " of your " + herbs.getPatches() : "all " + planted)
+					+ "; herbs take 80 minutes to grow, so "
+					+ Format.estimate(herbs.getSoonestMs()) + " at the soonest. Set your patches and yield in the plugin's settings."));
+			long seeds = herbs.getSeeds();
+			long held = herbs.getSeedsHeld();
+			stack.add(new Fact(held >= seeds ? Fact.TICK : Fact.DIAMOND, view.name(herbs.getSeed()) + ": " + Format.amount(seeds) + " to plant, " + Format.amount(held) + " held",
+				held >= seeds ? Theme.GREEN : held > 0 ? Theme.GOLD : Theme.TEXT_FAINT));
+		}
+		long time = view.estimate(step.getItem());
+		if (time >= 0 && step.getState() != Step.State.LOCKED && step.getRecipe().getVerb() != com.codex.provisioner.core.Verb.BUY)
+		{
+			boolean own = view.ownPace(step.getItem());
+			stack.add(new Fact(Fact.CLOCK, "About " + Format.estimate(time) + (own ? " at your pace" : " at a typical pace"),
+				own ? Theme.TEAL : Theme.TEXT_FAINT));
 		}
 		if (step.getState() == Step.State.READY && !step.getRecipe().isSource() && step.getCanNow() < step.getNet())
 		{
@@ -69,7 +96,7 @@ class NowCard extends Card
 		Headline(Chain chain, Step step, View view, ItemIcons icons)
 		{
 			this.step = step;
-			this.name = view.name(step.getItem());
+			this.name = view.shortName(step.getItem());
 			this.position = "STEP " + chain.number(step) + " OF " + chain.getSteps().size();
 			this.icons = icons;
 			setOpaque(false);
@@ -95,7 +122,21 @@ class NowCard extends Card
 			int tx = Well.SIZE + 12;
 
 			String left = step.getState() == Step.State.LOCKED ? "Lv " + step.getUnmet().getLevel() : Format.amount(step.getNet());
-			int lw = Crest.paintLarge(g, left, w - largeWidth(g, left), top + 2, color);
+			// The count is drawn large unless that would cut the name short; then the name comes first.
+			int large = largeWidth(g, left);
+			boolean squeezed = g.getFontMetrics(Theme.body()).stringWidth(name) > w - tx - large - 6;
+			int lw;
+			if (squeezed)
+			{
+				g.setFont(Theme.title());
+				FontMetrics fig = g.getFontMetrics();
+				lw = fig.stringWidth(left);
+				Ui.shadowed(g, left, w - lw, top + fig.getAscent() + 6, color);
+			}
+			else
+			{
+				lw = Crest.paintLarge(g, left, w - large, top + 2, color);
+			}
 			g.setFont(Theme.small());
 			g.setColor(Theme.TEXT_FAINT);
 			String to = step.getState() == Step.State.LOCKED ? "locked" : "to go";
@@ -104,13 +145,20 @@ class NowCard extends Card
 			g.setFont(Theme.small());
 			g.setColor(color);
 			g.drawString(step.getRecipe().getVerb().label().toUpperCase(Locale.ENGLISH), tx, top + small.getAscent() + 1);
+			// A long name beside a big count steps down to the body face before it is cut short.
+			int room = w - tx - lw - 6;
 			g.setFont(Theme.title());
+			if (g.getFontMetrics().stringWidth(name) > room)
+			{
+				g.setFont(Theme.body());
+			}
 			FontMetrics bold = g.getFontMetrics();
-			Ui.shadowed(g, Ui.clip(name, bold, w - tx - lw - 6), tx, top + small.getHeight() + bold.getAscent() + 2, Theme.TEXT);
+			Ui.shadowed(g, Ui.clip(name, bold, room), tx, top + small.getHeight() + g.getFontMetrics(Theme.title()).getAscent() + 2, Theme.TEXT);
 
 			int by = top + Well.SIZE + 8;
 			Bar.paint(g, 0, by, w, 5, step.progress());
-			String count = Format.amount(step.getDone()) + " / " + Format.amount(step.getBaseline());
+			String[] pair = Format.pair(step.getDone(), step.getBaseline());
+			String count = pair[0] + " / " + pair[1];
 			g.setFont(Theme.small());
 			g.setColor(Theme.TEXT_FAINT);
 			g.drawString(count, 0, by + 16);
@@ -131,6 +179,7 @@ class NowCard extends Card
 		static final int TICK = 0;
 		static final int CROSS = 1;
 		static final int DIAMOND = 2;
+		static final int CLOCK = 3;
 
 		private final int mark;
 		private final String text;
@@ -138,12 +187,17 @@ class NowCard extends Card
 
 		Fact(int mark, String text, Color color)
 		{
+			this(mark, text, color, text);
+		}
+
+		Fact(int mark, String text, Color color, String tip)
+		{
 			this.mark = mark;
 			this.text = text;
 			this.color = color;
 			setOpaque(false);
 			setPreferredSize(new Dimension(10, 14));
-			setToolTipText(text);
+			setToolTipText(tip);
 		}
 
 		@Override
@@ -169,6 +223,12 @@ class NowCard extends Card
 			{
 				g.drawLine(2, cy - 3, 7, cy + 2);
 				g.drawLine(7, cy - 3, 2, cy + 2);
+			}
+			else if (mark == CLOCK)
+			{
+				g.draw(new java.awt.geom.Ellipse2D.Float(1, cy - 3.5f, 7, 7));
+				g.drawLine(4, cy, 4, cy - 2);
+				g.drawLine(4, cy, 6, cy);
 			}
 			else
 			{

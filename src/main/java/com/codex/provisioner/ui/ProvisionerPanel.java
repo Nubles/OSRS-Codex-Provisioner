@@ -1,7 +1,9 @@
 package com.codex.provisioner.ui;
 
 import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Sitting;
 import com.codex.provisioner.core.Step;
+import com.codex.provisioner.core.Tree;
 import com.codex.provisioner.core.Supplies;
 import com.codex.provisioner.core.Supply;
 import java.awt.BorderLayout;
@@ -32,21 +34,27 @@ import net.runelite.client.ui.PluginPanel;
 public class ProvisionerPanel extends PluginPanel
 {
 	static final int WIDTH = 200;
-	private static final String[] TABS = {"chain", "stores", "kits"};
+	private static final String[] TABS = {"chain", "tree", "stores", "kits"};
 	private static final int[] TRIPS = {5, 10, 25, 50, 100};
 
 	private final ItemIcons icons;
 	private final Actions actions;
 	private final Crest crest = new Crest();
-	private final Segmented tabs = new Segmented(true, "Chain", "Stores", "Kits");
+	private final Segmented tabs = new Segmented(true, "Chain", "Tree", "Stores", "Kits");
 	private final Segmented trips = new Segmented(false, "5", "10", "25", "50", "100");
+	/** How long a sitting the Chain page plans, in minutes. */
+	private static final int[] SITTINGS = {30, 60, 120, 180};
+	private final Segmented sittingLength = new Segmented(false, "30m", "1h", "2h", "3h");
 	private final CardLayout cards = new CardLayout();
 	private final JPanel content = new JPanel(cards);
 	private final JScrollPane chainPage = scroller();
+	private final JScrollPane treePage = scroller();
 	private final JScrollPane storesPage = scroller();
 	private final JScrollPane kitsPage = scroller();
 
 	private View view = View.loggedOut();
+	/** Which pages still show an older view; a page is only rebuilt when it is looked at. */
+	private final boolean[] stale = {true, true, true, true};
 
 	public ProvisionerPanel(ItemIcons icons, Actions actions)
 	{
@@ -68,14 +76,21 @@ public class ProvisionerPanel extends PluginPanel
 
 		content.setOpaque(false);
 		content.add(chainPage, TABS[0]);
-		content.add(storesPage, TABS[1]);
-		content.add(kitsPage, TABS[2]);
+		content.add(treePage, TABS[1]);
+		content.add(storesPage, TABS[2]);
+		content.add(kitsPage, TABS[3]);
 		add(content, BorderLayout.CENTER);
 
 		tabs.onChange(this::showTab);
 		trips.setSelected(1, false);
 		trips.onChange(i -> actions.trips(TRIPS[i]));
-		rebuild();
+		sittingLength.setSelected(1, false);
+		sittingLength.onChange(i ->
+		{
+			stale[0] = true;
+			refresh(true);
+		});
+		refresh(true);
 	}
 
 	private static JScrollPane scroller()
@@ -105,14 +120,56 @@ public class ProvisionerPanel extends PluginPanel
 			}
 		}
 		updateCrest();
-		rebuild();
+		java.util.Arrays.fill(stale, true);
+		refresh(false);
 	}
 
-	/** Opens one tab, for previews and tests. */
+	/** Opens one tab. */
 	public void showTab(int index)
 	{
 		tabs.setSelected(index, false);
 		cards.show(content, TABS[index]);
+		refresh(true);
+	}
+
+	@Override
+	public void onActivate()
+	{
+		refresh(true);
+	}
+
+	/**
+	 * Rebuilds the page on show if it is out of date. Every withdrawal changes the view, so while
+	 * the panel is closed nothing is rebuilt at all, and while it is open only the page in view is.
+	 */
+	private void refresh(boolean force)
+	{
+		if (!force && !isShowing())
+		{
+			return;
+		}
+		int page = tabs.getSelected();
+		if (!stale[page])
+		{
+			return;
+		}
+		stale[page] = false;
+		if (page == 0)
+		{
+			rebuildChain();
+		}
+		else if (page == 1)
+		{
+			rebuildTree();
+		}
+		else if (page == 2)
+		{
+			rebuildStores();
+		}
+		else
+		{
+			rebuildKits();
+		}
 	}
 
 	private void updateCrest()
@@ -123,7 +180,9 @@ public class ProvisionerPanel extends PluginPanel
 			crest.update("PROVISIONS", null, 0, false, -1, "Log in to plan your supplies", null, Theme.TEXT_MUTED, Theme.GOLD);
 			return;
 		}
-		String heading = (chain.getKit().getName() + "  -  " + chain.getTrips() + " trips").toUpperCase(Locale.ENGLISH);
+		// A long kit name keeps the heading to itself; the trips are on the Stores tab, and a cut "100 TR..." helps no one.
+		String full = chain.getKit().getName() + " \u00b7 " + chain.getTrips() + " trips";
+		String heading = (full.length() > 24 ? chain.getKit().getName() : full).toUpperCase(Locale.ENGLISH);
 		if (view.state == View.State.WAITING_FOR_BANK)
 		{
 			crest.update(heading, null, 0, false, -1, "Open your bank to begin", null, Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.3), Theme.GOLD);
@@ -159,13 +218,6 @@ public class ProvisionerPanel extends PluginPanel
 		crest.update(heading, chain.doneCount(), chain.getSteps().size(), false, chain.progress(), status, shortStatus, color, Theme.GOLD);
 	}
 
-	private void rebuild()
-	{
-		rebuildChain();
-		rebuildStores();
-		rebuildKits();
-	}
-
 	private boolean waiting(StackPanel stack)
 	{
 		if (view.chain == null)
@@ -175,10 +227,35 @@ public class ProvisionerPanel extends PluginPanel
 		}
 		if (view.state == View.State.WAITING_FOR_BANK)
 		{
-			stack.add(note("Open your bank once", "The Provisioner counts what you already hold at every stage of the chain. After the first look it remembers the bank as last seen, so the panel works anywhere."));
+			stack.add(note("Open your bank once", "The Provisioner counts what you already hold at every stage of the chain. After the first look it remembers the bank as last seen, so the panel works anywhere. With Codex Bank Steward sharing its bank, this step is done for you."));
 			return true;
 		}
 		return false;
+	}
+
+	// The Tree tab.
+
+	/** Each supply as the tree of parts it is made from, root to leaves. */
+	private void rebuildTree()
+	{
+		StackPanel stack = new StackPanel(8, 8);
+		if (waiting(stack))
+		{
+			replace(treePage, stack);
+			return;
+		}
+		Chain chain = view.chain;
+		Step now = chain.current();
+		stack.add(Ui.wrapped("Each supply from the finished product down to what is gathered by hand. A part already stocked needs nothing beneath it.",
+			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		for (Map.Entry<Chain.Line, List<Tree.Node>> tree : Tree.of(chain).entrySet())
+		{
+			Chain.Line line = tree.getKey();
+			String trailing = line.getShort() <= 0 ? "stocked" : Format.amount(line.getShort()) + " short";
+			stack.add(new SectionHeader(view.name(line.getSupply()), trailing));
+			stack.add(new TreeCard(tree.getValue(), view, icons, now));
+		}
+		replace(treePage, stack);
 	}
 
 	// The Chain tab.
@@ -204,6 +281,15 @@ public class ProvisionerPanel extends PluginPanel
 		{
 			stack.add(new NowCard(chain, now, view, icons, WIDTH - 30));
 		}
+		String runway = runway(chain);
+		if (runway != null && !chain.provisioned())
+		{
+			stack.add(Ui.wrapped(runway, Theme.small(), chain.readyTrips() == 0 ? Theme.EMBER : Theme.TEAL, WIDTH - 16));
+		}
+		if (!chain.provisioned())
+		{
+			sitting(stack, chain);
+		}
 
 		Map<String, List<Step>> groups = new LinkedHashMap<>();
 		for (Step s : chain.getSteps())
@@ -226,15 +312,185 @@ public class ProvisionerPanel extends PluginPanel
 			card.add(rows, BorderLayout.CENTER);
 			stack.add(card);
 		}
+		if (!view.training.isEmpty())
+		{
+			double total = 0;
+			for (com.codex.provisioner.core.Training.Gain g : view.training)
+			{
+				total += g.getXp();
+			}
+			stack.add(new SectionHeader("What it trains", Format.amount(Math.round(total)) + " xp"));
+			Card card = new Card(new BorderLayout());
+			StackPanel rows = new StackPanel(4, 0);
+			for (int i = 0; i < view.training.size(); i++)
+			{
+				rows.add(new TrainRow(view.training.get(i), i == view.training.size() - 1));
+			}
+			card.add(rows, BorderLayout.CENTER);
+			stack.add(card);
+		}
+		long work = 0;
+		int untimed = 0;
+		long herbSeeds = 0;
+		int patches = 0;
+		for (Step s : chain.getSteps())
+		{
+			if (s.getState() == Step.State.DONE)
+			{
+				continue;
+			}
+			com.codex.provisioner.core.HerbRuns.Plan herbs = view.herbRuns(s.getItem());
+			long t = view.estimate(s.getItem());
+			if (herbs != null)
+			{
+				// Herbs of different kinds share a run, each patch planted with whichever is needed.
+				herbSeeds += herbs.getSeeds();
+				patches = herbs.getPatches();
+			}
+			else if (t >= 0)
+			{
+				work += t;
+			}
+			else
+			{
+				untimed++;
+			}
+		}
+		long herbRuns = patches == 0 ? 0 : (herbSeeds + patches - 1) / patches;
+		if (work > 0 || herbRuns > 0)
+		{
+			List<String> parts = new ArrayList<>();
+			if (herbRuns > 0)
+			{
+				parts.add(View.runs(herbRuns));
+			}
+			if (untimed > 0)
+			{
+				parts.add(untimed + (untimed == 1 ? " step" : " steps") + " that cannot be timed, such as drops and shop runs");
+			}
+			String time = (work > 0 ? "About " + Format.estimate(work) + " of work left" : "No timed work left")
+				+ (parts.isEmpty() ? "." : ", plus " + String.join(" and ", parts) + ".");
+			stack.add(Ui.wrapped(time, Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
+		}
 		String foot = view.measured >= 2
 			? "Planned from " + view.measured + " trips Codex Quartermaster measured with this kit."
 			: "Counts what your bank and inventory hold at every stage, so each step shrinks as you work.";
 		stack.add(Ui.wrapped(foot, Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		if (!view.bankOpen && view.bankSeen > 0)
 		{
-			stack.add(Ui.label("Bank as last seen " + Format.ago(view.now - view.bankSeen), Theme.small(), Theme.TEXT_FAINT));
+			stack.add(Ui.wrapped(view.bankShared
+					? "Bank as Codex Bank Steward saw it " + Format.ago(view.now - view.bankSeen) + "; open it once to count it here."
+					: "Bank as last seen " + Format.ago(view.now - view.bankSeen),
+				Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 		replace(chainPage, stack);
+	}
+
+	/** What one sitting of the chosen length gets through, the step in hand first. */
+	private void sitting(StackPanel stack, Chain chain)
+	{
+		long budget = SITTINGS[Math.max(0, Math.min(SITTINGS.length - 1, sittingLength.getSelected()))] * 60_000L;
+		java.util.Set<Integer> grown = new java.util.HashSet<>(view.herbRuns.keySet());
+		Sitting plan = Sitting.plan(chain, view.estimates, grown, budget);
+		boolean own = false;
+		for (Sitting.Piece p : plan.getPieces())
+		{
+			own |= view.ownPace(p.getStep().getItem());
+		}
+		stack.add(new SectionHeader("In one sitting", own ? "at your pace" : "at a typical pace"));
+		stack.add(sittingLength);
+		Card card = new Card(new BorderLayout());
+		StackPanel rows = new StackPanel(4, 0);
+		if (plan.getPieces().isEmpty())
+		{
+			rows.add(Ui.wrapped("Nothing left can be worked in a sitting yet; it waits on what is grown, dropped or above your levels.",
+				Theme.small(), Theme.TEXT_MUTED, WIDTH - 30));
+		}
+		for (Sitting.Piece p : plan.getPieces())
+		{
+			Step s = p.getStep();
+			String what = s.getRecipe().getVerb().label() + " " + Format.amount(p.getAmount())
+				+ (p.finishes() ? "" : " of " + Format.amount(s.getNet())) + " " + view.name(s.getItem()).toLowerCase(Locale.ENGLISH);
+			JPanel row = new JPanel(new BorderLayout(6, 0));
+			row.setOpaque(false);
+			row.add(Ui.wrapped(what, Theme.small(), p.finishes() ? Theme.TEXT : Theme.mix(Theme.TEXT, Theme.GOLD, 0.35), WIDTH - 80), BorderLayout.CENTER);
+			JPanel time = new JPanel(new BorderLayout());
+			time.setOpaque(false);
+			boolean shop = s.getRecipe().getVerb() == com.codex.provisioner.core.Verb.BUY;
+			// Buying is quickly done, so it is given no time of its own.
+			time.add(Ui.label(shop ? "" : Format.estimate(p.getMs()), Theme.small(), Theme.GOLD), BorderLayout.NORTH);
+			row.add(time, BorderLayout.EAST);
+			rows.add(row);
+		}
+		card.add(rows, BorderLayout.CENTER);
+		stack.add(card);
+		String foot;
+		if (plan.isEverything())
+		{
+			foot = "That is every timed step, in about " + Format.estimate(plan.getUsed()) + ".";
+		}
+		else
+		{
+			int later = 0;
+			int locked = 0;
+			int untimed = 0;
+			int waiting = 0;
+			for (Step s : plan.getLeft())
+			{
+				switch (plan.reason(s, view.estimates, grown))
+				{
+					case LOCKED:
+						locked++;
+						break;
+					case UNTIMED:
+						untimed++;
+						break;
+					case WAITING:
+						waiting++;
+						break;
+					default:
+						later++;
+						break;
+				}
+			}
+			List<String> parts = new ArrayList<>();
+			if (later > 0)
+			{
+				parts.add(later + (later == 1 ? " step" : " steps") + " for another sitting");
+			}
+			if (untimed > 0)
+			{
+				parts.add(untimed + (untimed == 1 ? " grown or untimed step" : " grown or untimed steps"));
+			}
+			if (waiting > 0)
+			{
+				parts.add(waiting + (waiting == 1 ? " step waiting on those" : " steps waiting on those"));
+			}
+			if (locked > 0)
+			{
+				parts.add(locked + (locked == 1 ? " step" : " steps") + " above your levels");
+			}
+			foot = parts.isEmpty() ? null : "Left after it: " + String.join(", ", parts) + ".";
+		}
+		if (foot != null)
+		{
+			stack.add(Ui.wrapped(foot, Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
+	}
+
+	/** "Ready for 4 of 10 trips now; prayer runs out first.", or null when the kit uses nothing up. */
+	private String runway(Chain chain)
+	{
+		Chain.Line first = chain.limiting();
+		if (first == null)
+		{
+			return null;
+		}
+		long ready = first.tripsHeld();
+		String trips = ready >= chain.getTrips() ? ready + (ready == 1 ? " trip" : " trips")
+			: ready + " of " + chain.getTrips() + " trips";
+		String head = ready == 0 ? "Not stocked for a single trip yet." : "Ready for " + trips + " now.";
+		return head + " First to run out: " + view.name(first.getSupply()).toLowerCase(java.util.Locale.ENGLISH) + ".";
 	}
 
 	private Chain.Line line(String supply)
@@ -266,7 +522,17 @@ public class ProvisionerPanel extends PluginPanel
 		tiles.setOpaque(false);
 		int done = chain.doneCount();
 		int total = chain.getSteps().size();
-		tiles.add(new StatTile(total == 0 ? "-" : done + " / " + total, "Steps", chain.provisioned() ? "all done" : Format.percent(chain.progress()) + " of the way", Theme.GOLD));
+		Chain.Line first = chain.limiting();
+		if (first != null)
+		{
+			long ready = first.tripsHeld();
+			tiles.add(new StatTile(String.valueOf(ready), "Ready for", ready >= chain.getTrips() ? "trips, all stocked"
+				: "of " + chain.getTrips() + " trips", ready >= chain.getTrips() ? Theme.GREEN : ready == 0 ? Theme.EMBER : Theme.GOLD));
+		}
+		else
+		{
+			tiles.add(new StatTile(total == 0 ? "-" : done + " / " + total, "Steps", chain.provisioned() ? "all done" : Format.percent(chain.progress()) + " of the way", Theme.GOLD));
+		}
 		List<Step> sources = chain.sources();
 		tiles.add(new StatTile(String.valueOf(sources.size()), "To gather", sources.isEmpty() ? "nothing left" : sources.size() == 1 ? "one source" : "sources", sources.isEmpty() ? Theme.GREEN : Theme.TEAL));
 		stack.add(tiles);
@@ -284,8 +550,10 @@ public class ProvisionerPanel extends PluginPanel
 			StackPanel rows = new StackPanel(2, 0);
 			for (Step s : sources)
 			{
+				com.codex.provisioner.core.HerbRuns.Plan herbs = view.herbRuns(s.getItem());
 				String note = s.getState() == Step.State.LOCKED
 					? "Needs " + Ui.skill(s.getUnmet().getSkill()) + " " + s.getUnmet().getLevel()
+					: herbs != null ? View.runs(herbs.getRuns()) + ", " + Format.amount(herbs.getSeeds()) + (herbs.getSeeds() == 1 ? " seed" : " seeds")
 					: s.getRecipe().getVerb().label() + (s.getHeld() > 0 ? ", " + Format.amount(s.getHeld()) + " held" : "");
 				rows.add(new SourceRow(s.getItem(), view.name(s.getItem()), note, Format.amount(s.getNet()),
 					s.getState() == Step.State.LOCKED ? Theme.BLOOD : Theme.GOLD, s.getRecipe().getHow(), icons));
@@ -297,7 +565,9 @@ public class ProvisionerPanel extends PluginPanel
 		buttons.setOpaque(false);
 		buttons.add(new CodexButton("Restart progress bars", false, actions::restart));
 		stack.add(buttons);
-		stack.add(Ui.wrapped("Pick what each supply is made as; a red dot means a level in its chain is not reached yet. Ironman friendly: no step needs trading with anyone.",
+		stack.add(Ui.wrapped(view.iron
+				? "Pick what each supply is made as; a red dot means a level in its chain is not reached yet. Iron account: no step needs trading with anyone."
+				: "Pick what each supply is made as; a red dot means a level in its chain is not reached yet. Making is priced from bought ingredients at Grand Exchange prices.",
 			Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		replace(storesPage, stack);
 	}

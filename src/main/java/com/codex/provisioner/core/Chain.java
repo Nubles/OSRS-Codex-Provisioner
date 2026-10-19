@@ -31,9 +31,11 @@ public final class Chain
 		private final int product;
 		private final long toMake;
 		private final List<Integer> options;
+		private final double perTrip;
 
-		Line(Supply supply, long want, long have, int product, long toMake, List<Integer> options)
+		Line(Supply supply, long want, long have, int product, long toMake, List<Integer> options, double perTrip)
 		{
+			this.perTrip = perTrip;
 			this.supply = supply;
 			this.want = want;
 			this.have = have;
@@ -75,6 +77,18 @@ public final class Chain
 			return toMake;
 		}
 
+		/** Units one trip takes. */
+		public double getPerTrip()
+		{
+			return perTrip;
+		}
+
+		/** Whole trips what is held already covers, or -1 when a trip takes none. */
+		public long tripsHeld()
+		{
+			return perTrip <= 0 ? -1 : (long) Math.floor(have / perTrip + 1e-9);
+		}
+
 		/** The items this supply can be made as, best first; empty when there is nothing to choose. */
 		public List<Integer> getOptions()
 		{
@@ -105,6 +119,17 @@ public final class Chain
 	public static Chain build(Kit kit, Map<String, Double> perTrip, int trips, Map<String, Integer> choices,
 		Map<Integer, Long> held, Map<Skill, Integer> levels, Map<Integer, Long> baselines)
 	{
+		return build(kit, perTrip, trips, choices, Collections.emptySet(), held, levels, baselines);
+	}
+
+	/**
+	 * @param bought supplies the player buys finished on the Grand Exchange instead of making; each
+	 *     is one buying step with nothing below it
+	 */
+	public static Chain build(Kit kit, Map<String, Double> perTrip, int trips, Map<String, Integer> choices,
+		Set<String> bought, Map<Integer, Long> held, Map<Skill, Integer> levels, Map<Integer, Long> baselines)
+	{
+		Set<Integer> boughtItems = new HashSet<>();
 		List<Line> lines = new ArrayList<>();
 		Map<Integer, Long> demand = new HashMap<>();
 		Map<Integer, String> home = new HashMap<>();
@@ -142,13 +167,17 @@ public final class Chain
 				units = Math.max(1, supply.getUnits().getOrDefault(product, 1));
 			}
 			long toMake = (long) Math.ceil(Math.max(0, want - have) / (double) units);
-			lines.add(new Line(supply, want, have, product, toMake, Collections.unmodifiableList(options)));
+			lines.add(new Line(supply, want, have, product, toMake, Collections.unmodifiableList(options), Math.max(0, per)));
 			// What is held of the product itself is already counted in the supply, so add it back.
 			if (toMake > 0)
 			{
 				demand.merge(product, toMake + held.getOrDefault(product, 0L), Long::sum);
 			}
-			visit(product, supply.getKey(), order, seen, home);
+			if (bought.contains(supply.getKey()) && !supply.isItem())
+			{
+				boughtItems.add(product);
+			}
+			visit(product, supply.getKey(), order, seen, home, boughtItems);
 		}
 
 		// Parents before children, so every demand on an item is in before it is passed down.
@@ -159,7 +188,7 @@ public final class Chain
 			long d = demand.getOrDefault(item, 0L);
 			long n = Math.max(0, d - held.getOrDefault(item, 0L));
 			net.put(item, n);
-			Recipe r = Cookbook.recipe(item);
+			Recipe r = recipe(item, boughtItems);
 			long crafts = (n + r.getMakes() - 1) / r.getMakes();
 			if (crafts > 0)
 			{
@@ -179,7 +208,7 @@ public final class Chain
 			{
 				continue;
 			}
-			Recipe r = Cookbook.recipe(item);
+			Recipe r = recipe(item, boughtItems);
 			long n = net.getOrDefault(item, 0L);
 			long have = held.getOrDefault(item, 0L);
 			long canNow = r.isSource() ? n : Math.min(n, makeable(r, held));
@@ -206,18 +235,25 @@ public final class Chain
 		return new Chain(kit, trips, Collections.unmodifiableList(lines), Collections.unmodifiableList(steps));
 	}
 
-	private static void visit(int item, String supply, List<Integer> order, Set<Integer> seen, Map<Integer, String> home)
+	private static void visit(int item, String supply, List<Integer> order, Set<Integer> seen, Map<Integer, String> home,
+		Set<Integer> bought)
 	{
 		if (!seen.add(item))
 		{
 			return;
 		}
 		home.put(item, supply);
-		for (int input : Cookbook.recipe(item).getInputs().keySet())
+		for (int input : recipe(item, bought).getInputs().keySet())
 		{
-			visit(input, supply, order, seen, home);
+			visit(input, supply, order, seen, home, bought);
 		}
 		order.add(item);
+	}
+
+	/** An item's recipe, or a plain buying step when its supply is bought finished. */
+	private static Recipe recipe(int item, Set<Integer> bought)
+	{
+		return bought.contains(item) ? Recipe.buy(item) : Cookbook.recipe(item);
 	}
 
 	private static long makeable(Recipe r, Map<Integer, Long> held)
@@ -395,6 +431,30 @@ public final class Chain
 			sum += s.progress();
 		}
 		return sum / steps.size();
+	}
+
+	/**
+	 * The supply that runs out first: the one whose holdings cover the fewest whole trips, the
+	 * first in the kit on a tie. Null when no supply is used up on a trip.
+	 */
+	public Line limiting()
+	{
+		Line first = null;
+		for (Line l : lines)
+		{
+			if (l.tripsHeld() >= 0 && (first == null || l.tripsHeld() < first.tripsHeld()))
+			{
+				first = l;
+			}
+		}
+		return first;
+	}
+
+	/** Whole trips the kit could go on now with what is held, or -1 when no supply is used up. */
+	public long readyTrips()
+	{
+		Line first = limiting();
+		return first == null ? -1 : first.tripsHeld();
 	}
 
 	/** The things to gather or buy, with how many, for the gathering list. */

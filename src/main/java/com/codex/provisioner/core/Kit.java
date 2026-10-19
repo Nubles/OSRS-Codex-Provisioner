@@ -71,7 +71,7 @@ public class Kit
 		{
 			needs = new ArrayList<>();
 		}
-		needs.removeIf(n -> n == null || n.getSupply() == null || Supplies.get(n.getSupply()) == null);
+		needs.removeIf(n -> n == null || n.getSupply() == null || Supplies.get(n.getSupply()) == null || n.getPerTrip() < 0);
 		return this;
 	}
 }

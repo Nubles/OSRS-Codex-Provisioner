@@ -192,10 +192,7 @@ public class CodexProvisionerPlugin extends Plugin
 		{
 			AsyncBufferedImage image = itemManager.getImage(itemId);
 			// A loaded picture would run the callback again at every ask, and the panel asks as it redraws.
-			if (!arrivals.arrived(itemId))
-			{
-				image.onLoaded(arrivals.watch(itemId, onLoaded));
-			}
+			arrivals.ask(image, onLoaded);
 			return image;
 		};
 		panel = new ProvisionerPanel(icons, new PanelActions());

@@ -724,20 +724,9 @@ public class CodexProvisionerPlugin extends Plugin
 		Step current = chain.current();
 		Loads loads = current == null ? null : Loads.of(current, this::stacks);
 		List<Training.Gain> training = Training.of(chain, provisions.xp(), provisions.levels());
-		Map<Integer, Long> marks = new HashMap<>();
-		if (loggedIn && current != null && current.getState() == Step.State.READY && config.bankMarks())
-		{
-			if (loads != null)
-			{
-				// One inventory, or what the step still needs when that is less.
-				loads.getWithdraw().forEach((item, n) -> marks.put(item, n));
-			}
-			for (int tool : current.getRecipe().getTools())
-			{
-				marks.putIfAbsent(tool, 1L);
-			}
-		}
-		bankMarks.show(marks);
+		// One inventory's inputs and the tools, less what is already in the pack, so the marks go as items come out.
+		bankMarks.show(loggedIn && current != null && current.getState() == Step.State.READY && config.bankMarks()
+			? Loads.toTake(loads, current.getRecipe().getTools(), carried) : Collections.emptyMap());
 		View view = new View(state, chain, summaries, new HashMap<>(names), held, provisions.levels(), quarters.hasSavedKits(),
 			config.measured() ? quarters.measuredTrips(kit.getId()) : 0, provisions.getBankSeen(), bankOpen, now)
 			.trade(provisions.isIron(), provisions.getBought(), quotes)

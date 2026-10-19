@@ -1,5 +1,6 @@
 package com.codex.provisioner.core;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -81,6 +82,38 @@ public final class Loads
 			withdraw.put(e.getKey(), perLoad * e.getValue());
 		}
 		return new Loads(perLoad * r.getMakes(), loads, Collections.unmodifiableMap(withdraw));
+	}
+
+	/**
+	 * What is still to come out of the bank for the inventory in hand: one load's inputs and one of
+	 * each tool, less what is already carried, so the marks go as the items come out.
+	 *
+	 * @param loads the split, or null to mark only the tools
+	 * @param carried the inventory and worn items, or null for none
+	 */
+	public static Map<Integer, Long> toTake(Loads loads, Collection<Integer> tools, Map<Integer, Long> carried)
+	{
+		Map<Integer, Long> have = carried == null ? Collections.emptyMap() : carried;
+		Map<Integer, Long> take = new LinkedHashMap<>();
+		if (loads != null)
+		{
+			loads.withdraw.forEach((item, n) ->
+			{
+				long left = n - have.getOrDefault(item, 0L);
+				if (left > 0)
+				{
+					take.put(item, left);
+				}
+			});
+		}
+		for (int tool : tools)
+		{
+			if (have.getOrDefault(tool, 0L) <= 0)
+			{
+				take.putIfAbsent(tool, 1L);
+			}
+		}
+		return take;
 	}
 
 	/** Items one full inventory makes or catches. */

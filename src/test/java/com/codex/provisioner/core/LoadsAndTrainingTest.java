@@ -59,6 +59,25 @@ public class LoadsAndTrainingTest
 	}
 
 	@Test
+	public void bankMarksShrinkAsTheInventoryFills()
+	{
+		Chain c = chain("PRAYER", 12, Collections.emptyMap());
+		Loads mix = Loads.of(step(c, ItemID._3DOSEPRAYERRESTORE), STACKABLE);
+		Map<Integer, Long> carried = new HashMap<>();
+		carried.put(ItemID.RANARRVIAL, 14L);
+		carried.put(ItemID.SNAPE_GRASS, 5L);
+		carried.put(ItemID.PESTLE_AND_MORTAR, 1L);
+		Map<Integer, Long> take = Loads.toTake(mix, Arrays.asList(ItemID.PESTLE_AND_MORTAR, ItemID.CHISEL), carried);
+		// The unfinished potions are all out already, and the pestle is in the pack: no marks for them.
+		assertFalse(take.containsKey(ItemID.RANARRVIAL));
+		assertFalse(take.containsKey(ItemID.PESTLE_AND_MORTAR));
+		assertEquals(9L, (long) take.get(ItemID.SNAPE_GRASS));
+		assertEquals(1L, (long) take.get(ItemID.CHISEL));
+		// With nothing to split into trips, only the tools are marked.
+		assertEquals(Collections.singletonMap(ItemID.CHISEL, 1L), Loads.toTake(null, Arrays.asList(ItemID.CHISEL), null));
+	}
+
+	@Test
 	public void twoInputMixesFitFourteenOfEach()
 	{
 		Chain c = chain("PRAYER", 12, Collections.emptyMap());

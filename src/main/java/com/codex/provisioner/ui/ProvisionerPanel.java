@@ -259,6 +259,23 @@ public class ProvisionerPanel extends PluginPanel
 			card.add(rows, BorderLayout.CENTER);
 			stack.add(card);
 		}
+		if (!view.training.isEmpty())
+		{
+			double total = 0;
+			for (com.codex.provisioner.core.Training.Gain g : view.training)
+			{
+				total += g.getXp();
+			}
+			stack.add(new SectionHeader("What it trains", Format.amount(Math.round(total)) + " xp"));
+			Card card = new Card(new BorderLayout());
+			StackPanel rows = new StackPanel(4, 0);
+			for (int i = 0; i < view.training.size(); i++)
+			{
+				rows.add(new TrainRow(view.training.get(i), i == view.training.size() - 1));
+			}
+			card.add(rows, BorderLayout.CENTER);
+			stack.add(card);
+		}
 		long work = 0;
 		int untimed = 0;
 		for (Step s : chain.getSteps())

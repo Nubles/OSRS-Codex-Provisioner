@@ -41,4 +41,15 @@ public interface CodexProvisionerConfig extends Config
 	{
 		return true;
 	}
+
+	@ConfigItem(
+		keyName = "bankMarks",
+		name = "Mark what to take out",
+		description = "With the bank open, outline what the step in hand needs for one inventory, with how many of each, and its tools",
+		position = 3
+	)
+	default boolean bankMarks()
+	{
+		return true;
+	}
 }

@@ -3,7 +3,9 @@ package com.codex.provisioner.ui;
 import com.codex.provisioner.core.Chain;
 import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.Kit;
+import com.codex.provisioner.core.Loads;
 import com.codex.provisioner.core.Supply;
+import com.codex.provisioner.core.Training;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -58,6 +60,10 @@ public final class View
 	Map<Integer, Long> estimates = Collections.emptyMap();
 	/** Whether a step's estimate comes from the player's own pace rather than a typical one. */
 	Map<Integer, Boolean> measuredPace = Collections.emptyMap();
+	/** How the step in hand splits into inventories, or null. */
+	Loads loads;
+	/** What the rest of the chain trains, the most experience first. */
+	List<Training.Gain> training = Collections.emptyList();
 
 	public View(State state, Chain chain, List<KitSummary> kits, Map<Integer, String> names, Map<Integer, Long> held,
 		Map<Skill, Integer> levels, boolean quartermaster, int measured, long bankSeen, boolean bankOpen, long now)
@@ -93,6 +99,13 @@ public final class View
 	{
 		this.estimates = estimates == null ? Collections.emptyMap() : estimates;
 		this.measuredPace = measured == null ? Collections.emptyMap() : measured;
+		return this;
+	}
+
+	public View work(Loads loads, List<Training.Gain> training)
+	{
+		this.loads = loads;
+		this.training = training == null ? Collections.emptyList() : training;
 		return this;
 	}
 

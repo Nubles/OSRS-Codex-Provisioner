@@ -44,6 +44,10 @@ class NowCard extends Card
 			String text = view.name(in.getKey()) + each + ": " + Format.amount(held) + " of " + Format.amount(need);
 			stack.add(new Fact(Fact.DIAMOND, text, held >= need ? Theme.GREEN : held > 0 ? Theme.GOLD : Theme.TEXT_FAINT));
 		}
+		if (view.loads != null && step.getState() == Step.State.READY)
+		{
+			stack.add(new LoadStrip(step, view.loads, view, icons));
+		}
 		for (int tool : step.getRecipe().getTools())
 		{
 			boolean has = view.held(tool) > 0;

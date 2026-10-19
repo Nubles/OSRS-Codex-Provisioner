@@ -23,6 +23,8 @@ public class Provisions
 	private Map<String, Integer> choices = new HashMap<>();
 	private Map<Integer, Long> baselines = new HashMap<>();
 	private Map<String, Integer> levels = new HashMap<>();
+	/** Experience in each skill as last seen, for what the chain trains. */
+	private Map<String, Long> xp = new HashMap<>();
 	/** Potion doses in the bank's potion storage, by each potion's 1-dose item; null until first read. */
 	private Map<Integer, Long> stored;
 	/** Supplies bought finished on the Grand Exchange rather than made. */
@@ -201,6 +203,44 @@ public class Provisions
 		return changed;
 	}
 
+	public Map<Skill, Long> xp()
+	{
+		Map<Skill, Long> out = new HashMap<>();
+		for (Map.Entry<String, Long> e : xp.entrySet())
+		{
+			try
+			{
+				out.put(Skill.valueOf(e.getKey()), e.getValue());
+			}
+			catch (IllegalArgumentException ignored)
+			{
+				// A skill from a newer client.
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Takes in experience as the game sends it. A reading of nothing for a skill already known is
+	 * a skill the game has not sent yet, not a real one, and is passed over.
+	 *
+	 * @return true when anything changed
+	 */
+	public boolean observeXp(Map<Skill, Long> seen)
+	{
+		boolean changed = false;
+		for (Map.Entry<Skill, Long> e : seen.entrySet())
+		{
+			if (e.getValue() <= 0 && xp.containsKey(e.getKey().name()))
+			{
+				continue;
+			}
+			Long old = xp.put(e.getKey().name(), e.getValue());
+			changed |= old == null || !old.equals(e.getValue());
+		}
+		return changed;
+	}
+
 	/** Works out the chain and remembers the most each step has had to go. */
 	public Chain plan(Kit kit, Map<String, Double> perTrip, Map<Integer, Long> carried)
 	{
@@ -248,6 +288,10 @@ public class Provisions
 		if (levels == null)
 		{
 			levels = new HashMap<>();
+		}
+		if (xp == null)
+		{
+			xp = new HashMap<>();
 		}
 		if (bought == null)
 		{

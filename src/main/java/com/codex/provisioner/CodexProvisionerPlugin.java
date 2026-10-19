@@ -3,10 +3,14 @@ package com.codex.provisioner;
 import com.codex.provisioner.core.Chain;
 import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.Kit;
+import com.codex.provisioner.core.Loads;
 import com.codex.provisioner.core.Prices;
 import com.codex.provisioner.core.Provisions;
 import com.codex.provisioner.core.Quarters;
 import com.codex.provisioner.core.Step;
+import com.codex.provisioner.core.Training;
+import com.codex.provisioner.core.Verb;
+import com.codex.provisioner.overlay.BankMarks;
 import com.codex.provisioner.overlay.StepPlaque;
 import com.codex.provisioner.ui.Actions;
 import com.codex.provisioner.ui.Format;
@@ -34,6 +38,8 @@ import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.EnumComposition;
 import net.runelite.api.EnumID;
+import net.runelite.api.GrandExchangeOffer;
+import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ScriptID;
@@ -41,6 +47,7 @@ import net.runelite.api.ItemContainer;
 import net.runelite.api.Skill;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.VarbitChanged;
@@ -129,7 +136,16 @@ public class CodexProvisionerPlugin extends Plugin
 	@Inject
 	private CodexProvisionerConfig config;
 
+	/** Windows in which items change hands by trade, so a step shrinking then is not work. */
+	private static final Set<Integer> TRADE_WINDOWS = new HashSet<>(java.util.Arrays.asList(
+		InterfaceID.GE_OFFERS, InterfaceID.GE_COLLECT, InterfaceID.SHOPMAIN, InterfaceID.TRADEMAIN, InterfaceID.TRADECONFIRM));
+
 	private final StepPlaque plaque = new StepPlaque();
+	private BankMarks bankMarks;
+	/** Whether each item stacks in one slot, asked of the item manager once. */
+	private final Map<Integer, Boolean> stackable = new HashMap<>();
+	/** The trading windows open now. */
+	private final Set<Integer> tradeOpen = new HashSet<>();
 	private final Map<Integer, String> names = new HashMap<>();
 
 	private ProvisionerPanel panel;
@@ -171,6 +187,7 @@ public class CodexProvisionerPlugin extends Plugin
 			return image;
 		};
 		panel = new ProvisionerPanel(icons, new PanelActions());
+		bankMarks = new BankMarks(itemManager);
 		navButton = NavigationButton.builder()
 			.tooltip("Codex Provisioner")
 			.icon(Sigil.icon(16))
@@ -179,6 +196,7 @@ public class CodexProvisionerPlugin extends Plugin
 			.build();
 		clientToolbar.addNavigation(navButton);
 		overlayManager.add(plaque);
+		overlayManager.add(bankMarks);
 		clientThread.invokeLater(() ->
 		{
 			loadProfile();
@@ -201,6 +219,8 @@ public class CodexProvisionerPlugin extends Plugin
 	protected void shutDown()
 	{
 		overlayManager.remove(plaque);
+		overlayManager.remove(bankMarks);
+		bankMarks.show(Collections.emptyMap());
 		clientToolbar.removeNavigation(navButton);
 		clientThread.invokeLater(() ->
 		{
@@ -210,6 +230,7 @@ public class CodexProvisionerPlugin extends Plugin
 			names.clear();
 			bankOpen = false;
 			lastStates = null;
+			tradeOpen.clear();
 		});
 		panel = null;
 	}
@@ -243,6 +264,7 @@ public class CodexProvisionerPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
 			bankOpen = false;
+			tradeOpen.clear();
 			readStorage = false;
 			storageGrace = 0;
 			save();
@@ -261,6 +283,7 @@ public class CodexProvisionerPlugin extends Plugin
 		save();
 		loadProfile();
 		bankOpen = false;
+		tradeOpen.clear();
 		readStorage = false;
 		storageGrace = 0;
 		carried = client.getGameState() == GameState.LOGGED_IN ? readCarried() : Collections.emptyMap();
@@ -288,7 +311,13 @@ public class CodexProvisionerPlugin extends Plugin
 	@Subscribe
 	public void onStatChanged(StatChanged event)
 	{
-		if (provisions != null && provisions.observeLevels(Collections.singletonMap(event.getSkill(), event.getLevel())))
+		if (provisions == null)
+		{
+			return;
+		}
+		boolean level = provisions.observeLevels(Collections.singletonMap(event.getSkill(), event.getLevel()));
+		boolean xp = provisions.observeXp(Collections.singletonMap(event.getSkill(), (long) event.getXp()));
+		if (level || xp)
 		{
 			unsaved = true;
 			dirty = true;
@@ -317,8 +346,28 @@ public class CodexProvisionerPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)
+	{
+		GrandExchangeOffer offer = event.getOffer();
+		if (provisions == null || offer == null || offer.getQuantitySold() <= 0)
+		{
+			return;
+		}
+		GrandExchangeOfferState state = offer.getState();
+		if (state == GrandExchangeOfferState.BUYING || state == GrandExchangeOfferState.BOUGHT)
+		{
+			// Bought items reach the bank or pack when collected, perhaps much later; that drop is a purchase.
+			provisions.getPace().bought(itemManager.canonicalize(offer.getItemId()), System.currentTimeMillis());
+		}
+	}
+
+	@Subscribe
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
+		if (TRADE_WINDOWS.contains(event.getGroupId()))
+		{
+			tradeOpen.add(event.getGroupId());
+		}
 		if (event.getGroupId() == InterfaceID.BANKMAIN)
 		{
 			bankOpen = true;
@@ -330,6 +379,10 @@ public class CodexProvisionerPlugin extends Plugin
 	@Subscribe
 	public void onWidgetClosed(WidgetClosed event)
 	{
+		if (event.isUnload())
+		{
+			tradeOpen.remove(event.getGroupId());
+		}
 		if (event.getGroupId() == InterfaceID.BANKMAIN && event.isUnload())
 		{
 			bankOpen = false;
@@ -488,15 +541,21 @@ public class CodexProvisionerPlugin extends Plugin
 	private void readLevels()
 	{
 		Map<Skill, Integer> levels = new EnumMap<>(Skill.class);
+		Map<Skill, Long> xp = new EnumMap<>(Skill.class);
 		for (Skill skill : Skill.values())
 		{
 			int level = client.getRealSkillLevel(skill);
 			if (level > 0)
 			{
 				levels.put(skill, level);
+				xp.put(skill, (long) client.getSkillExperience(skill));
 			}
 		}
 		if (!levels.isEmpty() && provisions.observeLevels(levels))
+		{
+			unsaved = true;
+		}
+		if (!xp.isEmpty() && provisions.observeXp(xp))
 		{
 			unsaved = true;
 		}
@@ -600,6 +659,7 @@ public class CodexProvisionerPlugin extends Plugin
 		if (provisions == null)
 		{
 			plaque.show(null, null, null, 0, null);
+			bankMarks.show(Collections.emptyMap());
 			if (target != null)
 			{
 				SwingUtilities.invokeLater(() -> target.update(View.loggedOut()));
@@ -649,17 +709,7 @@ public class CodexProvisionerPlugin extends Plugin
 			learnPace(chain, now);
 		}
 		// Buy or make, for accounts that can trade.
-		Map<String, Costing.Quote> quotes = new HashMap<>();
-		if (!provisions.isIron())
-		{
-			for (Chain.Line l : chain.getLines())
-			{
-				if (!l.getSupply().isItem() && l.getToMake() > 0)
-				{
-					quotes.put(l.getSupply().getKey(), Costing.quote(l.getProduct(), l.getToMake(), prices));
-				}
-			}
-		}
+		Map<String, Costing.Quote> quotes = provisions.isIron() ? new HashMap<>() : quotes(chain, held);
 		Map<Integer, Long> estimates = new HashMap<>();
 		Map<Integer, Boolean> measuredPace = new HashMap<>();
 		for (Step s : chain.getSteps())
@@ -671,12 +721,29 @@ public class CodexProvisionerPlugin extends Plugin
 			}
 		}
 		View.State state = !provisions.hasBank() ? View.State.WAITING_FOR_BANK : View.State.READY;
+		Step current = chain.current();
+		Loads loads = current == null ? null : Loads.of(current, this::stacks);
+		List<Training.Gain> training = Training.of(chain, provisions.xp(), provisions.levels());
+		Map<Integer, Long> marks = new HashMap<>();
+		if (loggedIn && current != null && current.getState() == Step.State.READY && config.bankMarks())
+		{
+			if (loads != null)
+			{
+				// One inventory, or what the step still needs when that is less.
+				loads.getWithdraw().forEach((item, n) -> marks.put(item, n));
+			}
+			for (int tool : current.getRecipe().getTools())
+			{
+				marks.putIfAbsent(tool, 1L);
+			}
+		}
+		bankMarks.show(marks);
 		View view = new View(state, chain, summaries, new HashMap<>(names), held, provisions.levels(), quarters.hasSavedKits(),
 			config.measured() ? quarters.measuredTrips(kit.getId()) : 0, provisions.getBankSeen(), bankOpen, now)
 			.trade(provisions.isIron(), provisions.getBought(), quotes)
-			.pace(estimates, measuredPace);
+			.pace(estimates, measuredPace)
+			.work(loads, training);
 
-		Step current = chain.current();
 		if (loggedIn && config.plaque() && provisions.hasBank() && current != null)
 		{
 			String verb = current.getRecipe().getVerb().label();
@@ -712,8 +779,17 @@ public class CodexProvisionerPlugin extends Plugin
 			nets.put(s.getItem(), s.getNet());
 			makes.put(s.getItem(), s.getRecipe().getMakes());
 		}
+		Set<Integer> untimed = new HashSet<>();
+		for (Step s : chain.getSteps())
+		{
+			Verb verb = s.getRecipe().getVerb();
+			if (verb == Verb.BUY || verb == Verb.STOCK)
+			{
+				untimed.add(s.getItem());
+			}
+		}
 		String plan = chain.getKit().getId() + "/" + chain.getTrips() + "/" + provisions.getChoices() + "/" + provisions.getBought();
-		if (provisions.getPace().observe(plan, nets, makes, now))
+		if (provisions.getPace().observe(plan, nets, makes, untimed, !tradeOpen.isEmpty(), now))
 		{
 			unsaved = true;
 		}
@@ -766,6 +842,35 @@ public class CodexProvisionerPlugin extends Plugin
 				.append(ChatColorType.NORMAL).append(text)
 				.build())
 			.build());
+	}
+
+	/**
+	 * Buy or make for each supply still to fill. Supplies being made are quoted first, each taking
+	 * the held ingredients it uses out of one pool, so two potions never both count the same
+	 * vials; supplies bought instead are then quoted from what is left, as the cost of making them.
+	 */
+	private Map<String, Costing.Quote> quotes(Chain chain, Map<Integer, Long> held)
+	{
+		Map<String, Costing.Quote> quotes = new HashMap<>();
+		Map<Integer, Long> pool = new HashMap<>(held);
+		Set<String> bought = provisions.getBought();
+		for (boolean buying : new boolean[]{false, true})
+		{
+			for (Chain.Line l : chain.getLines())
+			{
+				String key = l.getSupply().getKey();
+				if (!l.getSupply().isItem() && l.getToMake() > 0 && bought.contains(key) == buying)
+				{
+					quotes.put(key, Costing.quote(l.getProduct(), l.getToMake(), prices, buying ? new HashMap<>(pool) : pool));
+				}
+			}
+		}
+		return quotes;
+	}
+
+	private boolean stacks(int itemId)
+	{
+		return stackable.computeIfAbsent(itemId, id -> itemManager.getItemComposition(id).isStackable());
 	}
 
 	private String name(int itemId)

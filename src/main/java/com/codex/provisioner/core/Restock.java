@@ -24,12 +24,14 @@ public final class Restock
 	 * the bank sees the count fall with each load, so the same kit and supply are warned of again
 	 * only once fewer trips are held than last time, or after half an hour.
 	 *
+	 * @param chosen the kit the player picked on the Kits tab, or null: a kit only shown by
+	 *     default, never picked, is not one the player is stocking for, so it is never warned of
 	 * @param below warn when fewer whole trips than this are held; 0 never warns
 	 * @param names an item's name by its id
 	 */
-	public String onBank(Chain chain, int below, IntFunction<String> names, long now)
+	public String onBank(Chain chain, String chosen, int below, IntFunction<String> names, long now)
 	{
-		String text = warning(chain, below, names);
+		String text = chain == null || chosen == null || !chosen.equals(chain.getKit().getId()) ? null : warning(chain, below, names);
 		if (text == null)
 		{
 			// Stocked again: a later shortfall is news, even within the half hour.

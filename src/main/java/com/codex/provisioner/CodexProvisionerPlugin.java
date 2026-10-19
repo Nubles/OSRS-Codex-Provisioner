@@ -825,7 +825,7 @@ public class CodexProvisionerPlugin extends Plugin
 		if (warnNow)
 		{
 			warnNow = false;
-			String low = loggedIn && provisions.hasBank() ? restock.onBank(chain, config.lowStock(), this::name, now) : null;
+			String low = loggedIn && provisions.hasBank() ? restock.onBank(chain, provisions.getKit(), config.lowStock(), this::name, now) : null;
 			if (low != null)
 			{
 				say(low);

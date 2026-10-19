@@ -39,20 +39,29 @@ public class RestockTest
 	}
 
 	@Test
+	public void saysNothingOfAKitNeverPicked()
+	{
+		// The first kit is only shown until one is picked; a player who never set one up is not nagged.
+		assertNull(new Restock().onBank(vorkath(0), null, 3, NAMES, 1_000));
+		assertNull(new Restock().onBank(vorkath(0), "zulrah", 3, NAMES, 1_000));
+		assertNotNull(new Restock().onBank(vorkath(0), "v", 3, NAMES, 1_000));
+	}
+
+	@Test
 	public void isNotRepeatedAtEveryBankVisitWhileTheStockGrows()
 	{
 		Restock r = new Restock();
 		long t = 1_000_000;
-		assertNotNull(r.onBank(vorkath(3), 3, NAMES, t));
+		assertNotNull(r.onBank(vorkath(3), "v", 3, NAMES, t));
 		// More made since: the same shortfall, smaller, is not told again.
-		assertNull(r.onBank(vorkath(5), 3, NAMES, t + 60_000));
+		assertNull(r.onBank(vorkath(5), "v", 3, NAMES, t + 60_000));
 		// Fewer trips than last told: news.
-		assertNotNull(r.onBank(vorkath(0), 3, NAMES, t + 120_000));
-		assertNull(r.onBank(vorkath(0), 3, NAMES, t + 180_000));
+		assertNotNull(r.onBank(vorkath(0), "v", 3, NAMES, t + 120_000));
+		assertNull(r.onBank(vorkath(0), "v", 3, NAMES, t + 180_000));
 		// Half an hour on, a reminder.
-		assertNotNull(r.onBank(vorkath(0), 3, NAMES, t + 180_000 + Restock.QUIET_MS));
+		assertNotNull(r.onBank(vorkath(0), "v", 3, NAMES, t + 180_000 + Restock.QUIET_MS));
 		// Stocked, then short again: told at once.
-		assertNull(r.onBank(vorkath(8), 3, NAMES, t + 200_000 + Restock.QUIET_MS));
-		assertNotNull(r.onBank(vorkath(1), 3, NAMES, t + 210_000 + Restock.QUIET_MS));
+		assertNull(r.onBank(vorkath(8), "v", 3, NAMES, t + 200_000 + Restock.QUIET_MS));
+		assertNotNull(r.onBank(vorkath(1), "v", 3, NAMES, t + 210_000 + Restock.QUIET_MS));
 	}
 }

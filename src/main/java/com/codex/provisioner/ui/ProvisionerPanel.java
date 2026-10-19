@@ -280,7 +280,8 @@ public class ProvisionerPanel extends PluginPanel
 		if (work > 0)
 		{
 			String time = "About " + Format.estimate(work) + " of work left"
-				+ (untimed == 0 ? "." : ", plus " + untimed + (untimed == 1 ? " step" : " steps") + " that hang on farm runs, drops or luck.");
+				+ (untimed == 0 ? "." : ", plus " + untimed + (untimed == 1 ? " step" : " steps")
+					+ " that cannot be timed, such as farm runs, drops and shop runs.");
 			stack.add(Ui.wrapped(time, Theme.small(), Theme.TEXT_MUTED, WIDTH - 16));
 		}
 		String foot = view.measured >= 2

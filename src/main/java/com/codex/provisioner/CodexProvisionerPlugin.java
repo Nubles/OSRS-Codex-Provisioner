@@ -8,6 +8,7 @@ import com.codex.provisioner.core.Loads;
 import com.codex.provisioner.core.Prices;
 import com.codex.provisioner.core.Provisions;
 import com.codex.provisioner.core.Quarters;
+import com.codex.provisioner.core.Restock;
 import com.codex.provisioner.core.Settle;
 import com.codex.provisioner.core.SharedBank;
 import com.codex.provisioner.core.Step;
@@ -94,6 +95,8 @@ public class CodexProvisionerPlugin extends Plugin
 	private static final String PROVISIONS_KEY = "provisions";
 	/** Ticks between saves while something has changed. */
 	private static final int SAVE_TICKS = 50;
+	/** Ticks after the bank opens before the low-stock word, so its items and potion storage are counted. */
+	private static final int BANK_WARN_TICKS = 3;
 	private static final int[] POUCH_RUNES = {
 		VarbitID.RUNE_POUCH_TYPE_1, VarbitID.RUNE_POUCH_TYPE_2, VarbitID.RUNE_POUCH_TYPE_3,
 		VarbitID.RUNE_POUCH_TYPE_4, VarbitID.RUNE_POUCH_TYPE_5, VarbitID.RUNE_POUCH_TYPE_6
@@ -163,6 +166,11 @@ public class CodexProvisionerPlugin extends Plugin
 	private Map<Integer, Step.State> lastStates;
 	private String lastPlan;
 	private boolean bankOpen;
+	/** Ticks until the low-stock word at the bank, once its items and potion storage are in; -1 for none due. */
+	private int warnTicks = -1;
+	/** Whether the next publish gives the low-stock word. */
+	private boolean warnNow;
+	private final Restock restock = new Restock();
 	/** The potion storage needs reading on the next tick the bank is open. */
 	private boolean readStorage;
 	/** The varps the potion storage keeps its counts in, taken from the storage widget as RuneLite's bank tags do. */
@@ -275,6 +283,7 @@ public class CodexProvisionerPlugin extends Plugin
 		if (event.getGameState() == GameState.LOGIN_SCREEN)
 		{
 			bankOpen = false;
+			warnTicks = -1;
 			tradeOpen.clear();
 			readStorage = false;
 			storageGrace = 0;
@@ -285,6 +294,7 @@ public class CodexProvisionerPlugin extends Plugin
 		{
 			// A hop shuts every window; the next world opens with none, whether or not each close was heard.
 			bankOpen = false;
+			warnTicks = -1;
 			tradeOpen.clear();
 			readStorage = false;
 			storageGrace = 0;
@@ -302,6 +312,9 @@ public class CodexProvisionerPlugin extends Plugin
 	{
 		save();
 		loadProfile();
+		restock.reset();
+		warnTicks = -1;
+		warnNow = false;
 		bankOpen = false;
 		tradeOpen.clear();
 		readStorage = false;
@@ -419,6 +432,7 @@ public class CodexProvisionerPlugin extends Plugin
 			bankOpen = true;
 			readStorage = true;
 			dirty = true;
+			warnTicks = BANK_WARN_TICKS;
 		}
 	}
 
@@ -487,6 +501,19 @@ public class CodexProvisionerPlugin extends Plugin
 		if (storageGrace > 0 && !bankOpen)
 		{
 			storageGrace--;
+		}
+		if (warnTicks >= 0)
+		{
+			// The bank's items and then its potion storage come in over the first ticks after it opens.
+			if (!bankOpen)
+			{
+				warnTicks = -1;
+			}
+			else if (warnTicks-- == 0)
+			{
+				warnNow = true;
+				dirty = true;
+			}
 		}
 		if (unsaved && ticks % SAVE_TICKS == 0)
 		{
@@ -795,6 +822,15 @@ public class CodexProvisionerPlugin extends Plugin
 			announce(chain);
 			learnPace(chain, now);
 		}
+		if (warnNow)
+		{
+			warnNow = false;
+			String low = loggedIn && provisions.hasBank() ? restock.onBank(chain, config.lowStock(), this::name, now) : null;
+			if (low != null)
+			{
+				say(low);
+			}
+		}
 		// Buy or make, for accounts that can trade.
 		Map<String, Costing.Quote> quotes = provisions.isIron() ? new HashMap<>() : quotes(chain, held);
 		Map<Integer, Long> estimates = new HashMap<>();
@@ -915,6 +951,12 @@ public class CodexProvisionerPlugin extends Plugin
 			text += " Next: " + next.getRecipe().getVerb().label().toLowerCase(Locale.ENGLISH) + " "
 				+ Format.amount(next.getNet()) + " " + name(next.getItem()).toLowerCase(Locale.ENGLISH) + ".";
 		}
+		say(text);
+	}
+
+	/** A line in the chat box from the Provisioner. */
+	private void say(String text)
+	{
 		chatMessageManager.queue(QueuedMessage.builder()
 			.type(ChatMessageType.CONSOLE)
 			.runeLiteFormattedMessage(new ChatMessageBuilder()

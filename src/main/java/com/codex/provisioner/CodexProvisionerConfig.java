@@ -77,4 +77,16 @@ public interface CodexProvisionerConfig extends Config
 	{
 		return 8;
 	}
+
+	@ConfigItem(
+		keyName = "lowStock",
+		name = "Low stock warning",
+		description = "When you open the bank holding supplies for fewer trips of your kit than this, a chat line says so, which supply runs out first and how many more would cover it. 0 turns it off",
+		position = 6
+	)
+	@Range(max = 50)
+	default int lowStock()
+	{
+		return 3;
+	}
 }

@@ -134,23 +134,81 @@ class TreeCard extends JComponent
 			{
 				figureColor = Theme.TEXT_FAINT;
 			}
-			Ui.shadowed(g, figure, w - PAD - fw, mid - 1, figureColor);
-			int room = w - PAD - fw - 6 - tx;
 			String name = view.shortName(n.getItem());
-			// Deep in a tree a long name steps down a face before it is cut short.
-			FontMetrics face = body;
-			if (body.stringWidth(name) > room)
+			String under = line(n);
+			Layout at = layout(name, under, figure, body, small, w - PAD - tx);
+			// Deep in a tree a long name first steps down a face, then takes the whole line,
+			// its count moving down beside the shorter line under it.
+			int figureY = at.figureBelow ? mid + small.getAscent() + 1 : mid - 1;
+			if (at.figureBelow)
 			{
 				g.setFont(Theme.small());
-				face = small;
+				Ui.shadowed(g, figure, w - PAD - small.stringWidth(figure), figureY, figureColor);
 			}
-			Ui.shadowed(g, Ui.clip(name, face, room), tx, mid - 1, n.isRepeat() || n.isDone() ? Theme.TEXT_MUTED : Theme.TEXT);
+			else
+			{
+				Ui.shadowed(g, figure, w - PAD - fw, figureY, figureColor);
+			}
+			FontMetrics face = at.smallName ? small : body;
+			g.setFont(at.smallName ? Theme.small() : Theme.body());
+			Ui.shadowed(g, Ui.clip(name, face, at.nameRoom), tx, mid - 1, n.isRepeat() || n.isDone() ? Theme.TEXT_MUTED : Theme.TEXT);
 			g.setFont(Theme.small());
 			g.setColor(n.isRepeat() ? Theme.TEXT_FAINT : Theme.mix(tone, Theme.TEXT_MUTED, 0.45));
-			g.drawString(Ui.clip(line(n), small, w - PAD - tx), tx, mid + small.getAscent() + 1);
+			g.drawString(Ui.clip(fit(under, small, at.lineRoom), small, at.lineRoom), tx, mid + small.getAscent() + 1);
 			g.setFont(Theme.body());
 		}
 		g.dispose();
+	}
+
+	/** Where a row's name, its count and the line under it go, and how much room each has. */
+	static final class Layout
+	{
+		final boolean smallName;
+		final boolean figureBelow;
+		final int nameRoom;
+		final int lineRoom;
+
+		Layout(boolean smallName, boolean figureBelow, int nameRoom, int lineRoom)
+		{
+			this.smallName = smallName;
+			this.figureBelow = figureBelow;
+			this.nameRoom = nameRoom;
+			this.lineRoom = lineRoom;
+		}
+	}
+
+	/**
+	 * Fits a row into the width right of its picture. The name keeps the large face beside its
+	 * count where it can, else steps down a face; if it is still too long, the count moves to the
+	 * end of the line under it so the name has the whole width.
+	 */
+	static Layout layout(String name, String under, String figure, FontMetrics body, FontMetrics small, int room)
+	{
+		int beside = room - body.stringWidth(figure) - 6;
+		if (body.stringWidth(name) <= beside)
+		{
+			return new Layout(false, false, beside, room);
+		}
+		if (small.stringWidth(name) <= beside)
+		{
+			return new Layout(true, false, beside, room);
+		}
+		int below = room - small.stringWidth(figure) - 6;
+		return new Layout(body.stringWidth(name) > room, true, room, below);
+	}
+
+	/**
+	 * The line under a name, cut to its point when it will not fit whole: "grow, 4 herb runs"
+	 * becomes "4 herb runs", since the picture and the name already say what the part is.
+	 */
+	static String fit(String under, FontMetrics fm, int room)
+	{
+		int comma = under.indexOf(", ");
+		if (fm.stringWidth(under) <= room || comma < 0)
+		{
+			return under;
+		}
+		return under.substring(comma + 2);
 	}
 
 	/** The colour of a part: done in green, the step in hand bright, ready in gold, waiting faint, locked red. */

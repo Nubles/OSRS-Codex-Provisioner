@@ -33,6 +33,7 @@ Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quarter
 - **Herb runs.** Herbs still to grow are planned as herb runs instead of being left untimed: how many runs your patches take, how long they need to grow (80 minutes a run), and how many seeds that plants against the seeds in your bank. Different herbs share a run. Set how many patches you run and how many herbs a patch gives you in the settings; 0 patches leaves herbs untimed.
 - **Plaque.** An optional overlay in the game view with the step in hand, how many are left and its progress.
 - **Chat line.** When a step finishes, an optional chat message says so and names the next step.
+- **Low stock at the bank.** Open the bank with supplies for fewer trips of your kit than the *Low stock warning* setting (3 by default) and a chat line says how many trips you are ready for, which supply runs out first and how many more of it would cover the mark: "Ready for 2 trips of Vorkath. First to run out: prayer and restores; 2 more prayer potion(3) cover 3 trips." It waits a moment for the potion storage to be counted, and while you work through the chain at the bank it only speaks again if you fall further behind or half an hour has passed. Set it to 0 to turn it off.
 
 ### Chains it knows
 

@@ -553,7 +553,7 @@ public class ProvisionerPanel extends PluginPanel
 				com.codex.provisioner.core.HerbRuns.Plan herbs = view.herbRuns(s.getItem());
 				String note = s.getState() == Step.State.LOCKED
 					? "Needs " + Ui.skill(s.getUnmet().getSkill()) + " " + s.getUnmet().getLevel()
-					: herbs != null ? View.runs(herbs.getRuns()) + ", " + Format.amount(herbs.getSeeds()) + " seeds"
+					: herbs != null ? View.runs(herbs.getRuns()) + ", " + Format.amount(herbs.getSeeds()) + (herbs.getSeeds() == 1 ? " seed" : " seeds")
 					: s.getRecipe().getVerb().label() + (s.getHeld() > 0 ? ", " + Format.amount(s.getHeld()) + " held" : "");
 				rows.add(new SourceRow(s.getItem(), view.name(s.getItem()), note, Format.amount(s.getNet()),
 					s.getState() == Step.State.LOCKED ? Theme.BLOOD : Theme.GOLD, s.getRecipe().getHow(), icons));

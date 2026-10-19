@@ -31,9 +31,11 @@ public final class Chain
 		private final int product;
 		private final long toMake;
 		private final List<Integer> options;
+		private final double perTrip;
 
-		Line(Supply supply, long want, long have, int product, long toMake, List<Integer> options)
+		Line(Supply supply, long want, long have, int product, long toMake, List<Integer> options, double perTrip)
 		{
+			this.perTrip = perTrip;
 			this.supply = supply;
 			this.want = want;
 			this.have = have;
@@ -73,6 +75,18 @@ public final class Chain
 		public long getToMake()
 		{
 			return toMake;
+		}
+
+		/** Units one trip takes. */
+		public double getPerTrip()
+		{
+			return perTrip;
+		}
+
+		/** Whole trips what is held already covers, or -1 when a trip takes none. */
+		public long tripsHeld()
+		{
+			return perTrip <= 0 ? -1 : (long) Math.floor(have / perTrip + 1e-9);
 		}
 
 		/** The items this supply can be made as, best first; empty when there is nothing to choose. */
@@ -153,7 +167,7 @@ public final class Chain
 				units = Math.max(1, supply.getUnits().getOrDefault(product, 1));
 			}
 			long toMake = (long) Math.ceil(Math.max(0, want - have) / (double) units);
-			lines.add(new Line(supply, want, have, product, toMake, Collections.unmodifiableList(options)));
+			lines.add(new Line(supply, want, have, product, toMake, Collections.unmodifiableList(options), Math.max(0, per)));
 			// What is held of the product itself is already counted in the supply, so add it back.
 			if (toMake > 0)
 			{
@@ -417,6 +431,30 @@ public final class Chain
 			sum += s.progress();
 		}
 		return sum / steps.size();
+	}
+
+	/**
+	 * The supply that runs out first: the one whose holdings cover the fewest whole trips, the
+	 * first in the kit on a tie. Null when no supply is used up on a trip.
+	 */
+	public Line limiting()
+	{
+		Line first = null;
+		for (Line l : lines)
+		{
+			if (l.tripsHeld() >= 0 && (first == null || l.tripsHeld() < first.tripsHeld()))
+			{
+				first = l;
+			}
+		}
+		return first;
+	}
+
+	/** Whole trips the kit could go on now with what is held, or -1 when no supply is used up. */
+	public long readyTrips()
+	{
+		Line first = limiting();
+		return first == null ? -1 : first.tripsHeld();
 	}
 
 	/** The things to gather or buy, with how many, for the gathering list. */

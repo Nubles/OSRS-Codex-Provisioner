@@ -214,6 +214,12 @@ class SupplyCard extends Card
 			int fw = small.stringWidth(figures);
 			g.setFont(Theme.body());
 			FontMetrics fm = g.getFontMetrics();
+			if (fm.stringWidth(name) > w - fw - 8)
+			{
+				// The name matters more than the unit, which the bar and the tooltip carry.
+				figures = Format.amount(line.getHave()) + " / " + Format.amount(line.getWant());
+				fw = small.stringWidth(figures);
+			}
 			Ui.shadowed(g, Ui.clip(name, fm, w - fw - 8), 0, fm.getAscent(), Theme.TEXT);
 			g.setFont(Theme.small());
 			g.setColor(color);

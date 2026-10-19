@@ -18,6 +18,8 @@ public class Provisions
 
 	private Map<Integer, Long> bank = new HashMap<>();
 	private long bankSeen;
+	/** The bank as last seen came from Codex Bank Steward rather than the Provisioner's own look. */
+	private boolean bankShared;
 	private String kit;
 	private int trips = DEFAULT_TRIPS;
 	private Map<String, Integer> choices = new HashMap<>();
@@ -53,6 +55,31 @@ public class Provisions
 	{
 		bank = new HashMap<>(items);
 		bankSeen = now;
+		bankShared = false;
+	}
+
+	/**
+	 * Takes the bank another Codex plugin saw, when it saw it later than this one did. A minute's
+	 * grace keeps the two from trading the same look back and forth when both saw it.
+	 *
+	 * @return true when it was taken
+	 */
+	public boolean adoptShared(SharedBank shared)
+	{
+		if (shared == null || shared.getSavedAt() <= bankSeen + 60_000)
+		{
+			return false;
+		}
+		bank = new HashMap<>(shared.getItems());
+		bankSeen = shared.getSavedAt();
+		bankShared = true;
+		return true;
+	}
+
+	/** Whether the bank as last seen is the one Codex Bank Steward shared. */
+	public boolean isBankShared()
+	{
+		return bankShared;
 	}
 
 	/** The bank as last seen, its potion storage, and what is carried, together. */

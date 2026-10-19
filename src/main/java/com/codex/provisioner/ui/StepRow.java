@@ -27,11 +27,14 @@ class StepRow extends JComponent
 	private final ItemIcons icons;
 	/** Time left on this step, or -1 when it cannot be told. */
 	private final long estimate;
+	/** Herb runs for a herb still to grow, or null. */
+	private final com.codex.provisioner.core.HerbRuns.Plan herbs;
 
 	StepRow(Step step, View view, boolean current, boolean last, ItemIcons icons)
 	{
 		this.step = step;
-		this.name = view.name(step.getItem());
+		this.name = view.shortName(step.getItem());
+		this.herbs = view.herbRuns(step.getItem());
 		this.current = current;
 		this.last = last;
 		this.icons = icons;
@@ -40,7 +43,12 @@ class StepRow extends JComponent
 		setPreferredSize(new Dimension(10, HEIGHT));
 		String time = estimate < 0 || step.getState() == Step.State.DONE ? ""
 			: "<br>About " + Format.estimate(estimate) + (view.ownPace(step.getItem()) ? " at your own pace" : " at a typical pace");
-		setToolTipText("<html><b>" + Ui.escape(step.getRecipe().getVerb().label() + " " + name) + "</b><br>"
+		if (herbs != null && step.getState() != Step.State.DONE)
+		{
+			time = "<br>About " + View.runs(herbs.getRuns()) + " on " + herbs.getPatches() + " patches, "
+				+ Format.amount(herbs.getSeeds()) + " seeds";
+		}
+		setToolTipText("<html><b>" + Ui.escape(step.getRecipe().getVerb().label() + " " + view.name(step.getItem())) + "</b><br>"
 			+ Ui.escape(step.getRecipe().getHow()) + time + "</html>");
 	}
 
@@ -134,10 +142,14 @@ class StepRow extends JComponent
 			case LOCKED:
 				return "needs " + Ui.skill(step.getUnmet().getSkill()) + " " + step.getUnmet().getLevel();
 			case WAITING:
-				return "waits on an earlier step";
+				return "waits for inputs";
 			default:
 				long done = step.getDone();
 				String text = done > 0 ? Format.amount(done) + " of " + Format.amount(step.getBaseline()) : Format.amount(step.getNet()) + " to go";
+				if (herbs != null)
+				{
+					return View.runs(herbs.getRuns());
+				}
 				return estimate >= 0 ? text + "  -  " + Format.estimate(estimate) : text;
 		}
 	}

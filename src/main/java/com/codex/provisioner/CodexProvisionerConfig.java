@@ -3,6 +3,7 @@ package com.codex.provisioner;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
+import net.runelite.client.config.Range;
 
 @ConfigGroup(CodexProvisionerConfig.GROUP)
 public interface CodexProvisionerConfig extends Config
@@ -51,5 +52,29 @@ public interface CodexProvisionerConfig extends Config
 	default boolean bankMarks()
 	{
 		return true;
+	}
+
+	@ConfigItem(
+		keyName = "herbPatches",
+		name = "Herb patches",
+		description = "How many herb patches you run, to turn herbs still to grow into herb runs and seeds. 0 leaves herbs untimed",
+		position = 4
+	)
+	@Range(max = 15)
+	default int herbPatches()
+	{
+		return 7;
+	}
+
+	@ConfigItem(
+		keyName = "herbsPerPatch",
+		name = "Herbs per patch",
+		description = "How many herbs one patch gives you on average. About 8 with ultracompost and magic secateurs at a high Farming level; fewer without them",
+		position = 5
+	)
+	@Range(min = 3, max = 15)
+	default int herbsPerPatch()
+	{
+		return 8;
 	}
 }

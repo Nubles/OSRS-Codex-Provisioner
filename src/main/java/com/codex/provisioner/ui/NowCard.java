@@ -32,8 +32,8 @@ class NowCard extends Card
 		{
 			Integer have = view.level(req.getSkill());
 			boolean met = req.met(view.levels);
-			String text = Ui.skill(req.getSkill()) + " " + req.getLevel() + (req.isSoft() ? " to grow your own" : "")
-				+ (have == null ? "" : met ? "  -  you have " + have : "  -  you have " + have + ", " + (req.getLevel() - have) + " to go");
+			String text = Ui.skill(req.getSkill()) + " " + req.getLevel() + (req.isSoft() ? " to grow" : "")
+				+ (have == null ? "" : met ? (req.isSoft() ? "; you have " : "  -  you have ") + have : "  -  you have " + have + ", " + (req.getLevel() - have) + " to go");
 			stack.add(new Fact(met ? Fact.TICK : Fact.CROSS, text, req.isSoft() ? Theme.TEXT_FAINT : met ? Theme.TEAL : Theme.BLOOD));
 		}
 		for (Map.Entry<Integer, Integer> in : step.getRecipe().getInputs().entrySet())
@@ -53,6 +53,18 @@ class NowCard extends Card
 			boolean has = view.held(tool) > 0;
 			stack.add(new Fact(has ? Fact.TICK : Fact.CROSS, "Bring a " + view.name(tool).toLowerCase(Locale.ENGLISH) + (has ? "" : "; none in your bank"),
 				has ? Theme.TEAL : Theme.EMBER));
+		}
+		com.codex.provisioner.core.HerbRuns.Plan herbs = view.herbRuns(step.getItem());
+		if (herbs != null)
+		{
+			stack.add(new Fact(Fact.CLOCK, View.runs(herbs.getRuns()) + " on " + herbs.getPatches() + " patches  -  "
+				+ Format.estimate(herbs.getSoonestMs()), Theme.TEXT_MUTED,
+				"About " + View.runs(herbs.getRuns()) + " planting all " + herbs.getPatches() + " patches; herbs take 80 minutes to grow, so "
+					+ Format.estimate(herbs.getSoonestMs()) + " at the soonest. Set your patches and yield in the plugin's settings."));
+			long seeds = herbs.getSeeds();
+			long held = herbs.getSeedsHeld();
+			stack.add(new Fact(held >= seeds ? Fact.TICK : Fact.DIAMOND, view.name(herbs.getSeed()) + ": " + Format.amount(seeds) + " to plant, " + Format.amount(held) + " held",
+				held >= seeds ? Theme.GREEN : held > 0 ? Theme.GOLD : Theme.TEXT_FAINT));
 		}
 		long time = view.estimate(step.getItem());
 		if (time >= 0 && step.getState() != Step.State.LOCKED && step.getRecipe().getVerb() != com.codex.provisioner.core.Verb.BUY)
@@ -80,7 +92,7 @@ class NowCard extends Card
 		Headline(Chain chain, Step step, View view, ItemIcons icons)
 		{
 			this.step = step;
-			this.name = view.name(step.getItem());
+			this.name = view.shortName(step.getItem());
 			this.position = "STEP " + chain.number(step) + " OF " + chain.getSteps().size();
 			this.icons = icons;
 			setOpaque(false);
@@ -150,12 +162,17 @@ class NowCard extends Card
 
 		Fact(int mark, String text, Color color)
 		{
+			this(mark, text, color, text);
+		}
+
+		Fact(int mark, String text, Color color, String tip)
+		{
 			this.mark = mark;
 			this.text = text;
 			this.color = color;
 			setOpaque(false);
 			setPreferredSize(new Dimension(10, 14));
-			setToolTipText(text);
+			setToolTipText(tip);
 		}
 
 		@Override

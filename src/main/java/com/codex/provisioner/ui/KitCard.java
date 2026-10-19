@@ -29,6 +29,10 @@ class KitCard extends Card
 			detail = summary.shortSupplies + (summary.shortSupplies == 1 ? " supply" : " supplies") + " short  -  "
 				+ summary.steps + (summary.steps == 1 ? " step" : " steps");
 		}
+		if (summary.ready > 0 && summary.shortSupplies > 0)
+		{
+			detail += "  -  ready for " + summary.ready + (summary.ready == 1 ? " trip" : " trips");
+		}
 		if (summary.measured >= 2)
 		{
 			detail += "  -  measured";

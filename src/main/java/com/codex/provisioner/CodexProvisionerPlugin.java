@@ -6,7 +6,9 @@ import com.codex.provisioner.core.Kit;
 import com.codex.provisioner.core.Loads;
 import com.codex.provisioner.core.Prices;
 import com.codex.provisioner.core.Provisions;
+import com.codex.provisioner.core.HerbRuns;
 import com.codex.provisioner.core.Quarters;
+import com.codex.provisioner.core.SharedBank;
 import com.codex.provisioner.core.Step;
 import com.codex.provisioner.core.Training;
 import com.codex.provisioner.core.Verb;
@@ -88,9 +90,6 @@ public class CodexProvisionerPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexProvisionerPlugin.class);
 	private static final String PROVISIONS_KEY = "provisions";
-	/** Where Codex Quartermaster keeps its kits; read, never written. */
-	private static final String QUARTERMASTER_GROUP = "codexquartermaster";
-	private static final String QUARTERMASTER_KEY = "quarters";
 	/** Ticks between saves while something has changed. */
 	private static final int SAVE_TICKS = 50;
 	private static final int[] POUCH_RUNES = {
@@ -171,6 +170,8 @@ public class CodexProvisionerPlugin extends Plugin
 	private final Prices prices = id -> itemManager.getItemPrice(id);
 	private boolean dirty;
 	private boolean unsaved;
+	/** The next count of the steps is not work, such as a bank taken from Codex Bank Steward. */
+	private boolean quietPace;
 	private int ticks;
 
 	@Provides
@@ -309,7 +310,8 @@ public class CodexProvisionerPlugin extends Plugin
 		{
 			dirty = true;
 		}
-		else if (QUARTERMASTER_GROUP.equals(event.getGroup()) && event.getKey() != null && event.getKey().endsWith(QUARTERMASTER_KEY))
+		else if (Quarters.GROUP.equals(event.getGroup()) && event.getKey() != null
+			&& (event.getKey().endsWith(Quarters.KITS_KEY) || event.getKey().endsWith(Quarters.QUARTERS_KEY)))
 		{
 			// Quartermaster saved a kit or measured a trip.
 			clientThread.invokeLater(() ->
@@ -317,6 +319,29 @@ public class CodexProvisionerPlugin extends Plugin
 				loadQuarters();
 				dirty = true;
 			});
+		}
+		else if (SharedBank.GROUP.equals(event.getGroup()) && event.getKey() != null && event.getKey().endsWith(SharedBank.KEY))
+		{
+			// Codex Bank Steward saw the bank; worth taking only if this plugin did not see it too.
+			clientThread.invokeLater(this::adoptSharedBank);
+		}
+	}
+
+	/** Takes Codex Bank Steward's bank when it is newer than the one last seen here. */
+	private void adoptSharedBank()
+	{
+		if (provisions == null || bankOpen || profile == null)
+		{
+			return;
+		}
+		SharedBank shared = SharedBank.read(gson, configManager.getRSProfileConfiguration(SharedBank.GROUP, SharedBank.KEY));
+		if (provisions.adoptShared(shared))
+		{
+			// Not work done: no step is announced as finished and no pace is learned from the jump.
+			lastStates = null;
+			quietPace = true;
+			unsaved = true;
+			dirty = true;
 		}
 	}
 
@@ -633,6 +658,7 @@ public class CodexProvisionerPlugin extends Plugin
 			provisions.setKit(quarters.getActive() != null ? quarters.getActive() : quarters.allKits().get(0).getId());
 		}
 		unsaved = false;
+		adoptSharedBank();
 		dirty = true;
 	}
 
@@ -643,19 +669,10 @@ public class CodexProvisionerPlugin extends Plugin
 		{
 			return;
 		}
-		try
-		{
-			String saved = configManager.getRSProfileConfiguration(QUARTERMASTER_GROUP, QUARTERMASTER_KEY);
-			if (saved != null && !saved.isEmpty())
-			{
-				Quarters read = gson.fromJson(saved, Quarters.class);
-				quarters = read == null ? Quarters.none() : read;
-			}
-		}
-		catch (JsonParseException e)
-		{
-			log.debug("Could not read Codex Quartermaster's kits", e);
-		}
+		// Read only: the published kits first, Quartermaster's own entry for what they leave out.
+		quarters = Quarters.read(gson,
+			configManager.getRSProfileConfiguration(Quarters.GROUP, Quarters.KITS_KEY),
+			configManager.getRSProfileConfiguration(Quarters.GROUP, Quarters.QUARTERS_KEY));
 	}
 
 	/** Writes to the profile if anything changed, and says whether it did. */
@@ -726,7 +743,7 @@ public class CodexProvisionerPlugin extends Plugin
 				}
 			}
 			int open = c.getSteps().size() - c.doneCount();
-			summaries.add(new View.KitSummary(k, open, shortSupplies, quarters.measuredTrips(k.getId())));
+			summaries.add(new View.KitSummary(k, open, shortSupplies, quarters.measuredTrips(k.getId())).ready(c.readyTrips()));
 		}
 		for (Step s : chain.getSteps())
 		{
@@ -739,6 +756,21 @@ public class CodexProvisionerPlugin extends Plugin
 			name(l.getSupply().getIcon());
 			name(l.getProduct());
 			l.getOptions().forEach(this::name);
+		}
+
+		// Herbs still to grow, as herb runs on the patches the player runs.
+		Map<Integer, HerbRuns.Plan> herbRuns = new HashMap<>();
+		for (Step s : chain.getSteps())
+		{
+			if (s.getState() != Step.State.DONE && s.getRecipe().getVerb() == Verb.GATHER)
+			{
+				HerbRuns.Plan plan = HerbRuns.plan(s.getItem(), s.getNet(), config.herbPatches(), config.herbsPerPatch(), held);
+				if (plan != null)
+				{
+					herbRuns.put(s.getItem(), plan);
+					name(plan.getSeed());
+				}
+			}
 		}
 
 		if (provisions.hasBank())
@@ -769,7 +801,9 @@ public class CodexProvisionerPlugin extends Plugin
 			config.measured() ? quarters.measuredTrips(kit.getId()) : 0, provisions.getBankSeen(), bankOpen, now)
 			.trade(provisions.isIron(), provisions.getBought(), quotes)
 			.pace(estimates, measuredPace)
-			.work(loads, training);
+			.work(loads, training)
+			.herbs(herbRuns)
+			.shared(provisions.isBankShared());
 
 		if (loggedIn && config.plaque() && provisions.hasBank() && current != null)
 		{
@@ -816,7 +850,9 @@ public class CodexProvisionerPlugin extends Plugin
 			}
 		}
 		String plan = chain.getKit().getId() + "/" + chain.getTrips() + "/" + provisions.getChoices() + "/" + provisions.getBought();
-		if (provisions.getPace().observe(plan, nets, makes, untimed, !tradeOpen.isEmpty(), now))
+		boolean quiet = quietPace;
+		quietPace = false;
+		if (provisions.getPace().observe(plan, nets, makes, untimed, quiet || !tradeOpen.isEmpty(), now))
 		{
 			unsaved = true;
 		}

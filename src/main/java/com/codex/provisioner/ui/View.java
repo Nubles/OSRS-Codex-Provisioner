@@ -2,6 +2,7 @@ package com.codex.provisioner.ui;
 
 import com.codex.provisioner.core.Chain;
 import com.codex.provisioner.core.Costing;
+import com.codex.provisioner.core.HerbRuns;
 import com.codex.provisioner.core.Kit;
 import com.codex.provisioner.core.Loads;
 import com.codex.provisioner.core.Supply;
@@ -30,6 +31,8 @@ public final class View
 		final int steps;
 		final int shortSupplies;
 		final int measured;
+		/** Whole trips what is held covers now, or -1 when the kit uses nothing up. */
+		long ready = -1;
 
 		public KitSummary(Kit kit, int steps, int shortSupplies, int measured)
 		{
@@ -37,6 +40,12 @@ public final class View
 			this.steps = steps;
 			this.shortSupplies = shortSupplies;
 			this.measured = measured;
+		}
+
+		public KitSummary ready(long trips)
+		{
+			this.ready = trips;
+			return this;
 		}
 	}
 
@@ -64,6 +73,10 @@ public final class View
 	Loads loads;
 	/** What the rest of the chain trains, the most experience first. */
 	List<Training.Gain> training = Collections.emptyList();
+	/** Herb runs for each grimy herb still to grow, by the grimy herb. */
+	Map<Integer, HerbRuns.Plan> herbRuns = Collections.emptyMap();
+	/** The bank as last seen is the one Codex Bank Steward shared. */
+	boolean bankShared;
 
 	public View(State state, Chain chain, List<KitSummary> kits, Map<Integer, String> names, Map<Integer, Long> held,
 		Map<Skill, Integer> levels, boolean quartermaster, int measured, long bankSeen, boolean bankOpen, long now)
@@ -109,6 +122,30 @@ public final class View
 		return this;
 	}
 
+	public View herbs(Map<Integer, HerbRuns.Plan> plans)
+	{
+		this.herbRuns = plans == null ? Collections.emptyMap() : plans;
+		return this;
+	}
+
+	public View shared(boolean bankShared)
+	{
+		this.bankShared = bankShared;
+		return this;
+	}
+
+	/** The herb runs a step takes, or null when it is not grown in herb patches. */
+	HerbRuns.Plan herbRuns(int itemId)
+	{
+		return herbRuns.get(itemId);
+	}
+
+	/** Herb runs, said the way a player would: "1 herb run", "3 herb runs". */
+	static String runs(long n)
+	{
+		return n + (n == 1 ? " herb run" : " herb runs");
+	}
+
 	/** A step's time left, or -1 when it cannot be told. */
 	long estimate(int itemId)
 	{
@@ -124,6 +161,17 @@ public final class View
 	{
 		String n = names.get(itemId);
 		return n == null ? "Item " + itemId : n;
+	}
+
+	/**
+	 * A name short enough for a row: "Ranarr potion (unf)" reads as "Ranarr (unf)", since the
+	 * vial is plain from the step around it.
+	 */
+	String shortName(int itemId)
+	{
+		String n = name(itemId).replace(" potion (unf)", " (unf)");
+		// "Grimy ranarr weed" is plain as "Grimy ranarr"; dwarf weed is the herb's whole name.
+		return n.startsWith("Grimy ") && n.endsWith(" weed") && !n.endsWith("dwarf weed") ? n.substring(0, n.length() - 5) : n;
 	}
 
 	String name(Supply supply)

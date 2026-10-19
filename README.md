@@ -2,13 +2,15 @@
 
 A RuneLite plugin that turns "I need supplies" into a list of things to do. Pick a kit, pick how many trips, and the Provisioner walks you through gathering and making everything it takes, one step at a time: catch the fish, cook them, gather the herbs, clean them, fill the vials, mix the unfinished potions, add the secondaries. Iron accounts are recognised and every step is made by hand; an account that can trade is shown, for each supply, whether buying it finished or making it is cheaper.
 
-Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quartermaster appear here, and kits it has measured on real trips are planned from what you really used.
+Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quartermaster appear here, and kits it has measured on real trips are planned from what you really used. With Codex Bank Steward sharing its bank, the Provisioner starts from the bank it saw, so a fresh install needs no bank visit first.
 
 ![The chain](docs/screenshots/chain-top.png) ![Stores](docs/screenshots/stores.png) ![Kits](docs/screenshots/kits.png)
 
 ![Time on every step](docs/screenshots/chain-pace.png) ![Buy or make](docs/screenshots/stores-trade.png) ![A supply bought instead](docs/screenshots/stores-bought.png)
 
 ![Each trip to the bank](docs/screenshots/trip.png) ![Making from what you hold](docs/screenshots/stores-held.png)
+
+![Herb runs and trips ready](docs/screenshots/herb-runs.png) ![Ready for](docs/screenshots/stores-ready.png)
 
 ## What it does
 
@@ -23,6 +25,8 @@ Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quarter
 - **Each trip to the bank.** The step in hand shows one inventory as bank slots: fourteen unfinished potions and fourteen snape grass, twenty-eight grimy herbs, twenty-seven antidotes with a stack of scales, and how many trips the step has left. A tool takes a slot and a stack takes one however big it is. With the bank open, what to take out is outlined in teal with how many of each, and the tools to bring (this can be turned off).
 - **What it trains.** The Chain tab adds up the experience every open step gives, skill by skill, with the level each skill stands at now and the level it ends at once the chain is done.
 - **Time left on every step.** Each open step shows roughly how long it has left, and the Chain tab adds it all up. The Provisioner watches the steps shrink as you work and, once it has seen enough, uses your own pace (shown in teal on the step in hand); before that it uses a typical rate. Steps that cannot be timed, such as farm runs, drops and shop runs, are left out of the total and counted separately.
+- **Ready for how many trips.** Under the step in hand, and as a tile on the Stores tab, the Provisioner says how many whole trips what you hold already covers and which supply runs out first: "Ready for 3 of 10 trips now. First to run out: prayer and restores." Kits on the Kits tab say the same. You can stop at any point and go.
+- **Herb runs.** Herbs still to grow are planned as herb runs instead of being left untimed: how many runs your patches take, how long they need to grow (80 minutes a run), and how many seeds that plants against the seeds in your bank. Different herbs share a run. Set how many patches you run and how many herbs a patch gives you in the settings; 0 patches leaves herbs untimed.
 - **Plaque.** An optional overlay in the game view with the step in hand, how many are left and its progress.
 - **Chat line.** When a step finishes, an optional chat message says so and names the next step.
 
@@ -45,7 +49,7 @@ Anything else a kit carries, such as teleport tablets, is listed to stock as it 
 
 ## How it works
 
-The bank is read from `ItemContainerChanged` while it is open and remembered as last seen, so the panel works anywhere; its potion storage is read with the game's own dose script while the bank is open. Prices come from RuneLite's item manager. Your pace is learned from small, steady drops in a step's count with no break longer than two minutes; a big jump, such as a bank first seen, teaches nothing, and neither does anything that arrives by trade, however small: nothing is learned while a shop, trade or Grand Exchange window is open, an item the exchange buys for you is marked so its arrival is passed over when you collect it, and buying steps are never timed. The inventory, worn items (bolts in the ammo slot count) and rune pouch are read as they change, and levels come from `StatChanged`. Codex Quartermaster's saved kits and measured usage are read from its own RuneLite profile config; the Provisioner never writes to it. Its own state is stored per account in the RuneLite profile config as one compact entry.
+The bank is read from `ItemContainerChanged` while it is open and remembered as last seen, so the panel works anywhere; its potion storage is read with the game's own dose script while the bank is open. Prices come from RuneLite's item manager. Your pace is learned from small, steady drops in a step's count with no break longer than two minutes; a big jump, such as a bank first seen, teaches nothing, and neither does anything that arrives by trade, however small: nothing is learned while a shop, trade or Grand Exchange window is open, an item the exchange buys for you is marked so its arrival is passed over when you collect it, and buying steps are never timed. The inventory, worn items (bolts in the ammo slot count) and rune pouch are read as they change, and levels come from `StatChanged`. Codex Quartermaster's kits and measured usage are read from the kits it publishes for other plugins (`codexquartermaster/kitsV1`), with its own saved entry (`quarters`) read only for what that leaves out (the number of trips measured and its potion storage reading) or when Quartermaster is too old to publish. Codex Bank Steward's shared bank (`codexbanksteward/bankV1`) is taken only when it is newer than the bank the Provisioner saw itself, by more than a minute; taking it finishes no step in the chat and teaches no pace. The Provisioner never writes to either plugin's config, and works the same without them. Its own state is stored per account in the RuneLite profile config as one compact entry.
 
 It is guidance only. It does not automate any input, change menus, send any data off the client, or read or write files.
 

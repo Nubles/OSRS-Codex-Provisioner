@@ -16,6 +16,7 @@ import com.codex.provisioner.core.Verb;
 import com.codex.provisioner.overlay.BankMarks;
 import com.codex.provisioner.overlay.StepPlaque;
 import com.codex.provisioner.ui.Actions;
+import com.codex.provisioner.ui.Arrivals;
 import com.codex.provisioner.ui.Format;
 import com.codex.provisioner.ui.ItemIcons;
 import com.codex.provisioner.ui.ProvisionerPanel;
@@ -186,10 +187,15 @@ public class CodexProvisionerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		Arrivals arrivals = new Arrivals();
 		ItemIcons icons = (itemId, onLoaded) ->
 		{
 			AsyncBufferedImage image = itemManager.getImage(itemId);
-			image.onLoaded(onLoaded);
+			// A loaded picture would run the callback again at every ask, and the panel asks as it redraws.
+			if (!arrivals.arrived(itemId))
+			{
+				image.onLoaded(arrivals.watch(itemId, onLoaded));
+			}
 			return image;
 		};
 		panel = new ProvisionerPanel(icons, new PanelActions());

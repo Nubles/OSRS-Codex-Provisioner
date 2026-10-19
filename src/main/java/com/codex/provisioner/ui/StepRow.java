@@ -145,7 +145,8 @@ class StepRow extends JComponent
 				return "waits for inputs";
 			default:
 				long done = step.getDone();
-				String text = done > 0 ? Format.amount(done) + " of " + Format.amount(step.getBaseline()) : Format.amount(step.getNet()) + " to go";
+				String[] pair = Format.pair(done, step.getBaseline());
+				String text = done > 0 ? pair[0] + " of " + pair[1] : Format.amount(step.getNet()) + " to go";
 				if (herbs != null)
 				{
 					return View.runs(herbs.getRuns());

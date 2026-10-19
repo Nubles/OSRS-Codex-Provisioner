@@ -118,7 +118,7 @@ class SupplyCard extends Card
 		return "Buying is cheaper by " + Format.coins(-q.cashSaving()) + ", even counting what you hold as free.";
 	}
 
-	/** "4.2k Herblore xp", or "4.2k Herblore and 2k Cooking xp". */
+	/** "42k Herblore xp", or "42k Herblore and 2,400 Cooking xp". */
 	static String xpText(Costing.Quote q)
 	{
 		StringBuilder text = new StringBuilder();
@@ -210,14 +210,15 @@ class SupplyCard extends Card
 			Color color = share >= 1 ? Theme.GREEN : Theme.GOLD;
 			g.setFont(Theme.small());
 			FontMetrics small = g.getFontMetrics();
-			String figures = Format.amount(line.getHave()) + " / " + Format.amount(line.getWant()) + View.unit(line.getSupply());
+			String[] pair = Format.pair(line.getHave(), line.getWant());
+			String figures = pair[0] + " / " + pair[1] + View.unit(line.getSupply());
 			int fw = small.stringWidth(figures);
 			g.setFont(Theme.body());
 			FontMetrics fm = g.getFontMetrics();
 			if (fm.stringWidth(name) > w - fw - 8)
 			{
 				// The name matters more than the unit, which the bar and the tooltip carry.
-				figures = Format.amount(line.getHave()) + " / " + Format.amount(line.getWant());
+				figures = pair[0] + " / " + pair[1];
 				fw = small.stringWidth(figures);
 			}
 			Ui.shadowed(g, Ui.clip(name, fm, w - fw - 8), 0, fm.getAscent(), Theme.TEXT);

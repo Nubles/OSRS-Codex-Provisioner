@@ -41,7 +41,8 @@ class NowCard extends Card
 			long held = view.held(in.getKey());
 			long need = (step.getNet() + step.getRecipe().getMakes() - 1) / step.getRecipe().getMakes() * in.getValue();
 			String each = in.getValue() == 1 && step.getRecipe().getMakes() == 1 ? "" : "  (" + in.getValue() + " a go)";
-			String text = view.name(in.getKey()) + each + ": " + Format.amount(held) + " of " + Format.amount(need);
+			String[] pair = Format.pair(held, need);
+			String text = view.name(in.getKey()) + each + ": " + pair[0] + " of " + pair[1];
 			stack.add(new Fact(Fact.DIAMOND, text, held >= need ? Theme.GREEN : held > 0 ? Theme.GOLD : Theme.TEXT_FAINT));
 		}
 		if (view.loads != null && step.getState() == Step.State.READY)
@@ -156,7 +157,8 @@ class NowCard extends Card
 
 			int by = top + Well.SIZE + 8;
 			Bar.paint(g, 0, by, w, 5, step.progress());
-			String count = Format.amount(step.getDone()) + " / " + Format.amount(step.getBaseline());
+			String[] pair = Format.pair(step.getDone(), step.getBaseline());
+			String count = pair[0] + " / " + pair[1];
 			g.setFont(Theme.small());
 			g.setColor(Theme.TEXT_FAINT);
 			g.drawString(count, 0, by + 16);

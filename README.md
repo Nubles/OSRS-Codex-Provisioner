@@ -1,10 +1,12 @@
 # Codex Provisioner
 
-A RuneLite plugin that turns "I need supplies" into a list of things to do. Pick a kit, pick how many trips, and the Provisioner walks you through gathering and making everything it takes, one step at a time: catch the fish, cook them, gather the herbs, clean them, fill the vials, mix the unfinished potions, add the secondaries. It is built for ironmen, so nothing in the chain is bought from the Grand Exchange.
+A RuneLite plugin that turns "I need supplies" into a list of things to do. Pick a kit, pick how many trips, and the Provisioner walks you through gathering and making everything it takes, one step at a time: catch the fish, cook them, gather the herbs, clean them, fill the vials, mix the unfinished potions, add the secondaries. Iron accounts are recognised and every step is made by hand; an account that can trade is shown, for each supply, whether buying it finished or making it is cheaper.
 
 Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quartermaster appear here, and kits it has measured on real trips are planned from what you really used.
 
 ![The chain](docs/screenshots/chain-top.png) ![Stores](docs/screenshots/stores.png) ![Kits](docs/screenshots/kits.png)
+
+![Time on every step](docs/screenshots/chain-pace.png) ![Buy or make](docs/screenshots/stores-trade.png) ![A supply bought instead](docs/screenshots/stores-bought.png)
 
 ## What it does
 
@@ -14,6 +16,9 @@ Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quarter
 - **It counts what you already hold at every stage.** A bank full of clean ranarr needs no grimy ones; vials of water you already filled are taken off. Shared inputs, like vials of water across several potions, appear once with the total.
 - **The step in hand comes first.** Something you can make from what you hold beats gathering more, so a load of raw fish is cooked before the next is caught.
 - **Steps shrink as you work.** The bank and inventory are counted as they change, so cleaning a herb ticks the bar along. Burnt fish don't count, so the cooking step stays open until enough are cooked.
+- **Potion storage counts.** Doses in the bank's potion storage are read the same way Codex Quartermaster reads them, so stored prayer doses are not made again. Until the Provisioner has seen the storage itself, it uses Quartermaster's last reading.
+- **Buy or make.** For accounts that can trade, each supply on the Stores tab shows what it costs bought finished against made from bought ingredients at Grand Exchange prices (each ingredient bought or made, whichever is cheaper), the experience making gives, and, when making costs more, the coins each point costs. One button buys the supply instead, which turns its whole chain into one buying step; another goes back to making it. Iron accounts see none of this.
+- **Time left on every step.** Each open step shows roughly how long it has left, and the Chain tab adds it all up. The Provisioner watches the steps shrink as you work and, once it has seen enough, uses your own pace (shown in teal on the step in hand); before that it uses a typical rate. Steps that hang on farm runs or drops are left out of the total and counted separately.
 - **Plaque.** An optional overlay in the game view with the step in hand, how many are left and its progress.
 - **Chat line.** When a step finishes, an optional chat message says so and names the next step.
 
@@ -36,7 +41,7 @@ Anything else a kit carries, such as teleport tablets, is listed to stock as it 
 
 ## How it works
 
-The bank is read from `ItemContainerChanged` while it is open and remembered as last seen, so the panel works anywhere. The inventory, worn items (bolts in the ammo slot count) and rune pouch are read as they change, and levels come from `StatChanged`. Codex Quartermaster's saved kits and measured usage are read from its own RuneLite profile config; the Provisioner never writes to it. Its own state is stored per account in the RuneLite profile config as one compact entry.
+The bank is read from `ItemContainerChanged` while it is open and remembered as last seen, so the panel works anywhere; its potion storage is read with the game's own dose script while the bank is open. Prices come from RuneLite's item manager. Your pace is learned from small, steady drops in a step's count with no break longer than two minutes; a big jump, such as a stack bought or a bank first seen, teaches nothing. The inventory, worn items (bolts in the ammo slot count) and rune pouch are read as they change, and levels come from `StatChanged`. Codex Quartermaster's saved kits and measured usage are read from its own RuneLite profile config; the Provisioner never writes to it. Its own state is stored per account in the RuneLite profile config as one compact entry.
 
 It is guidance only. It does not automate any input, change menus, send any data off the client, or read or write files.
 

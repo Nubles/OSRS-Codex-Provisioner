@@ -47,6 +47,8 @@ public class ProvisionerPanel extends PluginPanel
 	private final JScrollPane kitsPage = scroller();
 
 	private View view = View.loggedOut();
+	/** Which pages still show an older view; a page is only rebuilt when it is looked at. */
+	private final boolean[] stale = {true, true, true};
 
 	public ProvisionerPanel(ItemIcons icons, Actions actions)
 	{
@@ -75,7 +77,7 @@ public class ProvisionerPanel extends PluginPanel
 		tabs.onChange(this::showTab);
 		trips.setSelected(1, false);
 		trips.onChange(i -> actions.trips(TRIPS[i]));
-		rebuild();
+		refresh(true);
 	}
 
 	private static JScrollPane scroller()
@@ -105,14 +107,52 @@ public class ProvisionerPanel extends PluginPanel
 			}
 		}
 		updateCrest();
-		rebuild();
+		java.util.Arrays.fill(stale, true);
+		refresh(false);
 	}
 
-	/** Opens one tab, for previews and tests. */
+	/** Opens one tab. */
 	public void showTab(int index)
 	{
 		tabs.setSelected(index, false);
 		cards.show(content, TABS[index]);
+		refresh(true);
+	}
+
+	@Override
+	public void onActivate()
+	{
+		refresh(true);
+	}
+
+	/**
+	 * Rebuilds the page on show if it is out of date. Every withdrawal changes the view, so while
+	 * the panel is closed nothing is rebuilt at all, and while it is open only the page in view is.
+	 */
+	private void refresh(boolean force)
+	{
+		if (!force && !isShowing())
+		{
+			return;
+		}
+		int page = tabs.getSelected();
+		if (!stale[page])
+		{
+			return;
+		}
+		stale[page] = false;
+		if (page == 0)
+		{
+			rebuildChain();
+		}
+		else if (page == 1)
+		{
+			rebuildStores();
+		}
+		else
+		{
+			rebuildKits();
+		}
 	}
 
 	private void updateCrest()
@@ -157,13 +197,6 @@ public class ProvisionerPanel extends PluginPanel
 			color = Theme.mix(Theme.TEXT_MUTED, Theme.GOLD, 0.45);
 		}
 		crest.update(heading, chain.doneCount(), chain.getSteps().size(), false, chain.progress(), status, shortStatus, color, Theme.GOLD);
-	}
-
-	private void rebuild()
-	{
-		rebuildChain();
-		rebuildStores();
-		rebuildKits();
 	}
 
 	private boolean waiting(StackPanel stack)

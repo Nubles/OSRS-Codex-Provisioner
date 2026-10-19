@@ -183,4 +183,20 @@ public class LoadsAndTrainingTest
 		assertFalse(p.observeXp(Collections.singletonMap(Skill.HERBLORE, 0L)));
 		assertEquals(1_000_000L, (long) p.xp().get(Skill.HERBLORE));
 	}
+
+	@Test
+	public void aMaxedSkillStaysAtNinetyNine()
+	{
+		// Past 13m experience the table goes on into virtual levels, which the game never shows.
+		Chain c = chain("PRAYER", 12, Collections.emptyMap());
+		Training.Gain herb = Training.of(c, Collections.singletonMap(Skill.HERBLORE, 20_000_000L), levels(99)).get(0);
+		assertEquals(99, herb.levelBefore());
+		assertEquals(99, herb.levelAfter());
+		assertEquals(1, herb.progressAfter(), 0);
+		// Crossing into 99 still reads as reaching it.
+		long nearly = Experience.getXpForLevel(99) - 100;
+		Training.Gain last = Training.of(c, Collections.singletonMap(Skill.HERBLORE, nearly), levels(98)).get(0);
+		assertEquals(98, last.levelBefore());
+		assertEquals(99, last.levelAfter());
+	}
 }

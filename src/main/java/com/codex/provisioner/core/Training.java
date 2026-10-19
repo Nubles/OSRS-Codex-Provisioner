@@ -71,7 +71,8 @@ public final class Training
 
 		private static int level(long xp)
 		{
-			return Experience.getLevelForXp((int) Math.max(0, Math.min(Experience.MAX_SKILL_XP, xp)));
+			// The table runs on into virtual levels past 99, which the game never shows.
+			return Math.min(Experience.MAX_REAL_LEVEL, Experience.getLevelForXp((int) Math.max(0, Math.min(Experience.MAX_SKILL_XP, xp))));
 		}
 	}
 

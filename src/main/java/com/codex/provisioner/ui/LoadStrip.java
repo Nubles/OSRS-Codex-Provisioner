@@ -54,6 +54,23 @@ class LoadStrip extends JComponent
 		setPreferredSize(new Dimension(10, 14 + Well.SIZE + 2));
 	}
 
+	/** The step from one slot to the next: a roomy gap with a plus between, closed up when the slots would not fit. */
+	static int pitch(int slots, int room)
+	{
+		int full = Well.SIZE + 4 + GAP;
+		if (slots <= 1)
+		{
+			return full;
+		}
+		return Math.max(Well.SIZE + 6, Math.min(full, (room - (Well.SIZE + 4)) / (slots - 1)));
+	}
+
+	/** Whether that many slots fit in the room at their closest. */
+	static boolean fits(int slots, int room)
+	{
+		return slots <= 1 ? Well.SIZE + 4 <= room : Well.SIZE + 4 + (slots - 1) * (Well.SIZE + 6) <= room;
+	}
+
 	String tip()
 	{
 		return tip;
@@ -70,20 +87,35 @@ class LoadStrip extends JComponent
 		g.setColor(Theme.GOLD_DIM);
 		g.drawString(label, 0, small.getAscent());
 
-		// The trips left, large on the right.
 		String count = String.valueOf(loads);
 		String unit = loads == 1 ? "trip" : "trips";
 		g.setFont(Theme.title());
 		FontMetrics bold = g.getFontMetrics();
 		int top = 14;
 		int right = Math.max(bold.stringWidth(count), small.stringWidth(unit));
-		Ui.shadowed(g, count, w - (right + bold.stringWidth(count)) / 2, top + bold.getAscent() + 1, Theme.GOLD_BRIGHT);
-		g.setFont(Theme.small());
-		g.setColor(Theme.TEXT_FAINT);
-		g.drawString(unit, w - (right + small.stringWidth(unit)) / 2, top + Well.SIZE - 2);
+		int room = w - right - 8;
+		// A super combat takes four ingredients: when they would not all fit beside the trips, the
+		// trips move up beside the label and the slots take the whole width, rather than leave one out.
+		boolean beside = fits(slots.size(), room);
+		if (beside)
+		{
+			// The trips left, large on the right.
+			Ui.shadowed(g, count, w - (right + bold.stringWidth(count)) / 2, top + bold.getAscent() + 1, Theme.GOLD_BRIGHT);
+			g.setFont(Theme.small());
+			g.setColor(Theme.TEXT_FAINT);
+			g.drawString(unit, w - (right + small.stringWidth(unit)) / 2, top + Well.SIZE - 2);
+		}
+		else
+		{
+			room = w;
+			String trips = count + " " + unit;
+			g.setFont(Theme.small());
+			Ui.shadowed(g, trips, w - small.stringWidth(trips), small.getAscent(), Theme.GOLD_BRIGHT);
+		}
 
 		int x = 0;
-		int room = w - right - 8;
+		int pitch = pitch(slots.size(), room);
+		int gap = pitch - (Well.SIZE + 4);
 		int i = 0;
 		for (Map.Entry<Integer, Long> e : slots.entrySet())
 		{
@@ -91,18 +123,18 @@ class LoadStrip extends JComponent
 			{
 				break;
 			}
-			if (i++ > 0)
+			if (i++ > 0 && gap >= 8)
 			{
 				g.setFont(Theme.small());
 				g.setColor(Theme.GOLD_DIM);
-				g.drawString("+", x - GAP + (GAP - small.stringWidth("+")) / 2 + 2, top + Well.SIZE / 2 + small.getAscent() / 2);
+				g.drawString("+", x - gap + (gap - small.stringWidth("+")) / 2, top + Well.SIZE / 2 + small.getAscent() / 2);
 			}
 			BufferedImage icon = icons == null ? null : icons.icon(e.getKey(), this::repaint);
 			Well.paint(g, x, top, icon, Theme.alpha(Theme.TEAL, 150));
 			String stack = Format.stack(e.getValue());
 			g.setFont(Theme.small());
 			Ui.shadowed(g, stack, x + 3, top + small.getAscent(), Format.stackColor(e.getValue()));
-			x += Well.SIZE + 4 + GAP;
+			x += pitch;
 		}
 		g.dispose();
 	}

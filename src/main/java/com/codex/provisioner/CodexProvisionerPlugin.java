@@ -156,6 +156,8 @@ public class CodexProvisionerPlugin extends Plugin
 	private Quarters quarters = Quarters.none();
 	/** What was carried when last seen, so the panel still counts it while logged out. */
 	private Map<Integer, Long> carried = Collections.emptyMap();
+	/** What is carried and usable as it is: noted items left out, since they cannot be worked or used as tools. */
+	private Map<Integer, Long> inHand = Collections.emptyMap();
 	/** Each step's state at the last count, to notice a step finishing; null after a change of plan. */
 	private Map<Integer, Step.State> lastStates;
 	private String lastPlan;
@@ -203,6 +205,7 @@ public class CodexProvisionerPlugin extends Plugin
 			if (client.getGameState() == GameState.LOGGED_IN && provisions != null)
 			{
 				carried = readCarried();
+				inHand = readInHand();
 				readLevels();
 				ItemContainer bank = client.getItemContainer(InventoryID.BANK);
 				if (bank != null)
@@ -270,6 +273,14 @@ public class CodexProvisionerPlugin extends Plugin
 			save();
 			publish();
 		}
+		else if (event.getGameState() == GameState.HOPPING)
+		{
+			// A hop shuts every window; the next world opens with none, whether or not each close was heard.
+			bankOpen = false;
+			tradeOpen.clear();
+			readStorage = false;
+			storageGrace = 0;
+		}
 		else if (event.getGameState() == GameState.LOGGED_IN && provisions != null)
 		{
 			readLevels();
@@ -287,6 +298,7 @@ public class CodexProvisionerPlugin extends Plugin
 		readStorage = false;
 		storageGrace = 0;
 		carried = client.getGameState() == GameState.LOGGED_IN ? readCarried() : Collections.emptyMap();
+		inHand = client.getGameState() == GameState.LOGGED_IN ? readInHand() : Collections.emptyMap();
 		publish();
 	}
 
@@ -341,6 +353,7 @@ public class CodexProvisionerPlugin extends Plugin
 		else if (id == InventoryID.INV || id == InventoryID.WORN)
 		{
 			carried = readCarried();
+			inHand = readInHand();
 			dirty = true;
 		}
 	}
@@ -538,6 +551,31 @@ public class CodexProvisionerPlugin extends Plugin
 		return items;
 	}
 
+	/**
+	 * What is carried as it can be used: herbs withdrawn as notes still count as held, but not as
+	 * taken out for the step, so their bank marks stay until real ones come out.
+	 */
+	private Map<Integer, Long> readInHand()
+	{
+		Map<Integer, Long> items = new HashMap<>();
+		for (int container : new int[]{InventoryID.INV, InventoryID.WORN})
+		{
+			ItemContainer c = client.getItemContainer(container);
+			for (Item item : c == null ? new Item[0] : c.getItems())
+			{
+				if (item.getId() >= 0 && item.getQuantity() > 0 && itemManager.getItemComposition(item.getId()).getNote() != -1)
+				{
+					items.merge(itemManager.canonicalize(item.getId()), (long) -item.getQuantity(), Long::sum);
+				}
+			}
+		}
+		// Everything carried, the rune pouch's runes too, less the notes.
+		Map<Integer, Long> usable = new HashMap<>(carried);
+		items.forEach((id, less) -> usable.merge(id, less, Long::sum));
+		usable.values().removeIf(q -> q <= 0);
+		return usable;
+	}
+
 	private void readLevels()
 	{
 		Map<Skill, Integer> levels = new EnumMap<>(Skill.class);
@@ -726,7 +764,7 @@ public class CodexProvisionerPlugin extends Plugin
 		List<Training.Gain> training = Training.of(chain, provisions.xp(), provisions.levels());
 		// One inventory's inputs and the tools, less what is already in the pack, so the marks go as items come out.
 		bankMarks.show(loggedIn && current != null && current.getState() == Step.State.READY && config.bankMarks()
-			? Loads.toTake(loads, current.getRecipe().getTools(), carried) : Collections.emptyMap());
+			? Loads.toTake(loads, current.getRecipe().getTools(), inHand) : Collections.emptyMap());
 		View view = new View(state, chain, summaries, new HashMap<>(names), held, provisions.levels(), quarters.hasSavedKits(),
 			config.measured() ? quarters.measuredTrips(kit.getId()) : 0, provisions.getBankSeen(), bankOpen, now)
 			.trade(provisions.isIron(), provisions.getBought(), quotes)

@@ -224,6 +224,11 @@ public class Provisions
 		boolean changed = false;
 		for (Map.Entry<Skill, Integer> e : seen.entrySet())
 		{
+			if (e.getValue() == null || e.getValue() <= 0)
+			{
+				// Not a real reading: a skill not sent yet, as during a world hop, would lock every step.
+				continue;
+			}
 			Integer old = levels.put(e.getKey().name(), e.getValue());
 			changed |= old == null || !old.equals(e.getValue());
 		}

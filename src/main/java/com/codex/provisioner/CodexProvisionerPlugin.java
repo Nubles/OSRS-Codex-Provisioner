@@ -1,6 +1,7 @@
 package com.codex.provisioner;
 
 import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Settle;
 import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.Kit;
 import com.codex.provisioner.core.Loads;
@@ -173,6 +174,8 @@ public class CodexProvisionerPlugin extends Plugin
 	/** The next count of the steps is not work, such as a bank taken from Codex Bank Steward. */
 	private boolean quietPace;
 	private int ticks;
+	/** The ticks after a login or hop before the levels and the ironman varbit can be trusted. */
+	private final Settle settle = new Settle();
 
 	@Provides
 	CodexProvisionerConfig provideConfig(ConfigManager configManager)
@@ -205,6 +208,7 @@ public class CodexProvisionerPlugin extends Plugin
 			loadProfile();
 			if (client.getGameState() == GameState.LOGGED_IN && provisions != null)
 			{
+				// Turned on while logged in: everything the game sends at login is already here.
 				carried = readCarried();
 				inHand = readInHand();
 				readLevels();
@@ -281,11 +285,12 @@ public class CodexProvisionerPlugin extends Plugin
 			tradeOpen.clear();
 			readStorage = false;
 			storageGrace = 0;
+			settle.restart();
 		}
-		else if (event.getGameState() == GameState.LOGGED_IN && provisions != null)
+		else if (event.getGameState() == GameState.LOGGING_IN)
 		{
-			readLevels();
-			dirty = true;
+			// Levels and varbits are sent over the first ticks after the login; they are read once they are in.
+			settle.restart();
 		}
 	}
 
@@ -455,6 +460,15 @@ public class CodexProvisionerPlugin extends Plugin
 			return;
 		}
 		ticks++;
+		if (settle.tick())
+		{
+			readLevels();
+			dirty = true;
+		}
+		if (!settle.isSettled())
+		{
+			return;
+		}
 		boolean iron = client.getVarbitValue(VarbitID.IRONMAN) > 0;
 		if (provisions.isIron() != iron)
 		{

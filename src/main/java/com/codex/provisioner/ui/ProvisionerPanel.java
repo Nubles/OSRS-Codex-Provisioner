@@ -1,6 +1,7 @@
 package com.codex.provisioner.ui;
 
 import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Sitting;
 import com.codex.provisioner.core.Step;
 import com.codex.provisioner.core.Supplies;
 import com.codex.provisioner.core.Supply;
@@ -40,6 +41,9 @@ public class ProvisionerPanel extends PluginPanel
 	private final Crest crest = new Crest();
 	private final Segmented tabs = new Segmented(true, "Chain", "Stores", "Kits");
 	private final Segmented trips = new Segmented(false, "5", "10", "25", "50", "100");
+	/** How long a sitting the Chain page plans, in minutes. */
+	private static final int[] SITTINGS = {30, 60, 120, 180};
+	private final Segmented sittingLength = new Segmented(false, "30m", "1h", "2h", "3h");
 	private final CardLayout cards = new CardLayout();
 	private final JPanel content = new JPanel(cards);
 	private final JScrollPane chainPage = scroller();
@@ -77,6 +81,12 @@ public class ProvisionerPanel extends PluginPanel
 		tabs.onChange(this::showTab);
 		trips.setSelected(1, false);
 		trips.onChange(i -> actions.trips(TRIPS[i]));
+		sittingLength.setSelected(1, false);
+		sittingLength.onChange(i ->
+		{
+			stale[0] = true;
+			refresh(true);
+		});
 		refresh(true);
 	}
 
@@ -242,6 +252,10 @@ public class ProvisionerPanel extends PluginPanel
 		{
 			stack.add(Ui.wrapped(runway, Theme.small(), chain.readyTrips() == 0 ? Theme.EMBER : Theme.TEAL, WIDTH - 16));
 		}
+		if (!chain.provisioned())
+		{
+			sitting(stack, chain);
+		}
 
 		Map<String, List<Step>> groups = new LinkedHashMap<>();
 		for (Step s : chain.getSteps())
@@ -336,6 +350,97 @@ public class ProvisionerPanel extends PluginPanel
 				Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
 		}
 		replace(chainPage, stack);
+	}
+
+	/** What one sitting of the chosen length gets through, the step in hand first. */
+	private void sitting(StackPanel stack, Chain chain)
+	{
+		long budget = SITTINGS[Math.max(0, Math.min(SITTINGS.length - 1, sittingLength.getSelected()))] * 60_000L;
+		java.util.Set<Integer> grown = new java.util.HashSet<>(view.herbRuns.keySet());
+		Sitting plan = Sitting.plan(chain, view.estimates, grown, budget);
+		boolean own = false;
+		for (Sitting.Piece p : plan.getPieces())
+		{
+			own |= view.ownPace(p.getStep().getItem());
+		}
+		stack.add(new SectionHeader("In one sitting", own ? "at your pace" : "at a typical pace"));
+		stack.add(sittingLength);
+		Card card = new Card(new BorderLayout());
+		StackPanel rows = new StackPanel(4, 0);
+		if (plan.getPieces().isEmpty())
+		{
+			rows.add(Ui.wrapped("Nothing left can be worked in a sitting yet; it waits on what is grown, dropped or above your levels.",
+				Theme.small(), Theme.TEXT_MUTED, WIDTH - 30));
+		}
+		for (Sitting.Piece p : plan.getPieces())
+		{
+			Step s = p.getStep();
+			String what = s.getRecipe().getVerb().label() + " " + Format.amount(p.getAmount())
+				+ (p.finishes() ? "" : " of " + Format.amount(s.getNet())) + " " + view.name(s.getItem()).toLowerCase(Locale.ENGLISH);
+			JPanel row = new JPanel(new BorderLayout(6, 0));
+			row.setOpaque(false);
+			row.add(Ui.wrapped(what, Theme.small(), p.finishes() ? Theme.TEXT : Theme.mix(Theme.TEXT, Theme.GOLD, 0.35), WIDTH - 80), BorderLayout.CENTER);
+			JPanel time = new JPanel(new BorderLayout());
+			time.setOpaque(false);
+			boolean shop = s.getRecipe().getVerb() == com.codex.provisioner.core.Verb.BUY;
+			time.add(Ui.label(shop ? "shop" : Format.estimate(p.getMs()), Theme.small(), shop ? Theme.TEXT_FAINT : Theme.GOLD), BorderLayout.NORTH);
+			row.add(time, BorderLayout.EAST);
+			rows.add(row);
+		}
+		card.add(rows, BorderLayout.CENTER);
+		stack.add(card);
+		String foot;
+		if (plan.isEverything())
+		{
+			foot = "That is every timed step, in about " + Format.estimate(plan.getUsed()) + ".";
+		}
+		else
+		{
+			int later = 0;
+			int locked = 0;
+			int untimed = 0;
+			int waiting = 0;
+			for (Step s : plan.getLeft())
+			{
+				switch (plan.reason(s, view.estimates, grown))
+				{
+					case LOCKED:
+						locked++;
+						break;
+					case UNTIMED:
+						untimed++;
+						break;
+					case WAITING:
+						waiting++;
+						break;
+					default:
+						later++;
+						break;
+				}
+			}
+			List<String> parts = new ArrayList<>();
+			if (later > 0)
+			{
+				parts.add(later + (later == 1 ? " step" : " steps") + " for another sitting");
+			}
+			if (untimed > 0)
+			{
+				parts.add(untimed + (untimed == 1 ? " grown or untimed step" : " grown or untimed steps"));
+			}
+			if (waiting > 0)
+			{
+				parts.add(waiting + (waiting == 1 ? " step waiting on those" : " steps waiting on those"));
+			}
+			if (locked > 0)
+			{
+				parts.add(locked + (locked == 1 ? " step" : " steps") + " above your levels");
+			}
+			foot = parts.isEmpty() ? null : "Left after it: " + String.join(", ", parts) + ".";
+		}
+		if (foot != null)
+		{
+			stack.add(Ui.wrapped(foot, Theme.small(), Theme.TEXT_FAINT, WIDTH - 16));
+		}
 	}
 
 	/** "Ready for 4 of 10 trips now; prayer runs out first.", or null when the kit uses nothing up. */

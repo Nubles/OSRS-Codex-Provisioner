@@ -154,7 +154,8 @@ public class Pace
 		{
 			seen = new HashMap<>();
 		}
-		seen.values().removeIf(v -> v == null || v.length != 2);
+		seen.values().removeIf(v -> v == null || v.length != 2 || v[0] < 0 || v[1] < 0);
+		seen.keySet().removeIf(k -> k == null);
 		return this;
 	}
 }

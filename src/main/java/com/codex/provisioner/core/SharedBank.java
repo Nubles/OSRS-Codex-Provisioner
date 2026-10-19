@@ -46,7 +46,8 @@ public final class SharedBank
 			JsonObject o = root.getAsJsonObject();
 			JsonElement at = o.get("savedAt");
 			JsonElement list = o.get("items");
-			if (at == null || !at.isJsonPrimitive() || !at.getAsJsonPrimitive().isNumber() || list == null || !list.isJsonObject())
+			Long savedAt = Json.whole(at);
+			if (savedAt == null || list == null || !list.isJsonObject())
 			{
 				return null;
 			}
@@ -56,18 +57,18 @@ public final class SharedBank
 				try
 				{
 					int id = Integer.parseInt(e.getKey());
-					long qty = e.getValue().getAsLong();
-					if (id > 0 && qty > 0)
+					Long qty = Json.whole(e.getValue());
+					if (id > 0 && qty != null && qty > 0)
 					{
-						items.put(id, qty);
+						// No stack holds more than an int; a bigger figure is damage, not items.
+						items.put(id, Json.count(qty));
 					}
 				}
-				catch (NumberFormatException | IllegalStateException | UnsupportedOperationException | ClassCastException ignored)
+				catch (NumberFormatException ignored)
 				{
 					// One unreadable entry does not spoil the rest.
 				}
 			}
-			long savedAt = at.getAsLong();
 			return savedAt > 0 ? new SharedBank(savedAt, items) : null;
 		}
 		catch (JsonParseException | IllegalStateException | NumberFormatException e)

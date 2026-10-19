@@ -13,7 +13,7 @@ public interface CodexProvisionerConfig extends Config
 	@ConfigItem(
 		keyName = "plaque",
 		name = "Step plaque",
-		description = "Show a small plaque in the game view with the step in hand and how many are left",
+		description = "Show a small plaque in the game view with the step in hand and how many are left to make",
 		position = 0
 	)
 	default boolean plaque()
@@ -23,8 +23,8 @@ public interface CodexProvisionerConfig extends Config
 
 	@ConfigItem(
 		keyName = "announce",
-		name = "Announce finished steps",
-		description = "When a step is done, say so in the chat box along with what comes next",
+		name = "Steps in chat",
+		description = "When a step is done, add a line to the chat box saying so and what comes next",
 		position = 1
 	)
 	default boolean announce()
@@ -45,7 +45,7 @@ public interface CodexProvisionerConfig extends Config
 
 	@ConfigItem(
 		keyName = "bankMarks",
-		name = "Mark what to take out",
+		name = "Mark items in the bank",
 		description = "With the bank open, outline what the step in hand needs for one inventory, with how many of each, and its tools",
 		position = 3
 	)
@@ -57,7 +57,7 @@ public interface CodexProvisionerConfig extends Config
 	@ConfigItem(
 		keyName = "herbPatches",
 		name = "Herb patches",
-		description = "How many herb patches you run, to turn herbs still to grow into herb runs and seeds. 0 leaves herbs untimed",
+		description = "How many herb patches you run, so herbs still to grow are told as herb runs and seeds; 0 leaves them out",
 		position = 4
 	)
 	@Range(max = 15)
@@ -69,7 +69,7 @@ public interface CodexProvisionerConfig extends Config
 	@ConfigItem(
 		keyName = "herbsPerPatch",
 		name = "Herbs per patch",
-		description = "How many herbs one patch gives you on average. About 8 with ultracompost and magic secateurs at a high Farming level; fewer without them",
+		description = "How many herbs one patch gives you on average: about 8 with ultracompost and magic secateurs at a high Farming level, fewer without",
 		position = 5
 	)
 	@Range(min = 3, max = 15)
@@ -81,7 +81,7 @@ public interface CodexProvisionerConfig extends Config
 	@ConfigItem(
 		keyName = "lowStock",
 		name = "Low stock warning",
-		description = "When you open the bank holding supplies for fewer trips of your kit than this, a chat line says so, which supply runs out first and how many more would cover it. 0 turns it off",
+		description = "When you open the bank with supplies for fewer trips of your kit than this, add a line to the chat box naming the supply that runs out first and how many more would cover it; 0 turns it off",
 		position = 6
 	)
 	@Range(max = 50)

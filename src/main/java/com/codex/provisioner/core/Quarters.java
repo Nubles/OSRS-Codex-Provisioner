@@ -30,6 +30,12 @@ public class Quarters
 	/** Quartermaster's own saved state. */
 	public static final String QUARTERS_KEY = "quarters";
 
+	/**
+	 * The most of a supply one trip is taken to use. A bigger figure is damage, and read as it
+	 * was it overflowed into a kit needing less than nothing.
+	 */
+	static final double MOST = 1_000_000;
+
 	/** Trips before Quartermaster trusts its measured amounts; the Provisioner does the same. */
 	static final int TRUSTED = 2;
 
@@ -63,8 +69,9 @@ public class Quarters
 		{
 			old = quarters == null || quarters.trim().isEmpty() ? null : gson.fromJson(quarters, Quarters.class);
 		}
-		catch (JsonParseException | IllegalStateException | NumberFormatException e)
+		catch (RuntimeException e)
 		{
+			// Quartermaster's own entry may change shape between versions; read as none.
 			old = null;
 		}
 		JsonObject book = object(gson, kitsV1);
@@ -109,9 +116,9 @@ public class Quarters
 					{
 						continue;
 					}
-					needs.add(new Need(supply, (int) Math.max(0, Math.round(perTrip))));
+					needs.add(new Need(supply, (int) Math.round(Math.max(0, Math.min(MOST, perTrip)))));
 					Double used = number(line, "measured");
-					if (used != null && used >= 0)
+					if (used != null && used >= 0 && used <= MOST)
 					{
 						measured.put(supply, used);
 					}
@@ -205,13 +212,34 @@ public class Quarters
 		{
 			return Collections.emptyMap();
 		}
-		return Collections.unmodifiableMap(u.perTrip);
+		// Quartermaster's own entry is read as it stands, so a damaged figure is left out here.
+		Map<String, Double> out = new HashMap<>();
+		u.perTrip.forEach((supply, used) ->
+		{
+			if (supply != null && used != null && used >= 0 && used <= MOST)
+			{
+				out.put(supply, used);
+			}
+		});
+		return Collections.unmodifiableMap(out);
 	}
 
 	/** The potion storage as Quartermaster last read it, or null without Quartermaster. */
 	public Map<Integer, Long> getStored()
 	{
-		return stored;
+		if (stored == null)
+		{
+			return null;
+		}
+		Map<Integer, Long> out = new HashMap<>();
+		stored.forEach((id, doses) ->
+		{
+			if (id != null && doses != null && doses > 0)
+			{
+				out.put(id, Json.count(doses));
+			}
+		});
+		return out;
 	}
 
 	public int measuredTrips(String kitId)

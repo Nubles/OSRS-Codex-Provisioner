@@ -25,7 +25,6 @@ import com.codex.provisioner.ui.Sigil;
 import com.codex.provisioner.ui.Theme;
 import com.codex.provisioner.ui.View;
 import com.google.gson.Gson;
-import com.google.gson.JsonParseException;
 import com.google.inject.Provides;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,6 +45,7 @@ import net.runelite.api.EnumID;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
 import net.runelite.api.GameState;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.Item;
 import net.runelite.api.ScriptID;
 import net.runelite.api.ItemContainer;
@@ -93,6 +93,8 @@ public class CodexProvisionerPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(CodexProvisionerPlugin.class);
 	private static final String PROVISIONS_KEY = "provisions";
+	/** Where a damaged save is set aside, as it was, before what was read from it is saved over it. */
+	private static final String DAMAGED_KEY = "provisionsDamaged";
 	/** Ticks between saves while something has changed. */
 	private static final int SAVE_TICKS = 50;
 	/** Ticks after the bank opens before the low-stock word, so its items and potion storage are counted. */
@@ -678,23 +680,15 @@ public class CodexProvisionerPlugin extends Plugin
 			quarters = Quarters.none();
 			return;
 		}
-		try
+		String saved = configManager.getRSProfileConfiguration(CodexProvisionerConfig.GROUP, PROVISIONS_KEY);
+		Provisions.Loaded read = Provisions.read(gson, saved, System.currentTimeMillis());
+		if (read.damaged)
 		{
-			String saved = configManager.getRSProfileConfiguration(CodexProvisionerConfig.GROUP, PROVISIONS_KEY);
-			if (saved != null && !saved.isEmpty())
-			{
-				Provisions read = gson.fromJson(saved, Provisions.class);
-				provisions = read == null ? null : read.repair();
-			}
+			// The save as it was is kept aside before anything is written over it.
+			log.warn("The saved provisions were damaged; kept what still reads and set the save as it was aside");
+			configManager.setConfiguration(CodexProvisionerConfig.GROUP, profile, DAMAGED_KEY, saved);
 		}
-		catch (JsonParseException e)
-		{
-			log.warn("Could not read the saved provisions, starting afresh", e);
-		}
-		if (provisions == null)
-		{
-			provisions = new Provisions();
-		}
+		provisions = read.provisions;
 		loadQuarters();
 		if (provisions.getKit() == null)
 		{
@@ -992,12 +986,33 @@ public class CodexProvisionerPlugin extends Plugin
 
 	private boolean stacks(int itemId)
 	{
-		return stackable.computeIfAbsent(itemId, id -> itemManager.getItemComposition(id).isStackable());
+		return stackable.computeIfAbsent(itemId, id ->
+		{
+			ItemComposition item = composition(id);
+			return item != null && item.isStackable();
+		});
 	}
 
 	private String name(int itemId)
 	{
-		return names.computeIfAbsent(itemId, id -> itemManager.getItemComposition(id).getName());
+		return names.computeIfAbsent(itemId, id ->
+		{
+			ItemComposition item = composition(id);
+			return item == null || item.getName() == null ? "Item " + id : item.getName();
+		});
+	}
+
+	/** The game's own entry for an item, or null for an id it does not know, as a damaged kit may name. */
+	private ItemComposition composition(int itemId)
+	{
+		try
+		{
+			return itemId > 0 ? itemManager.getItemComposition(itemId) : null;
+		}
+		catch (RuntimeException e)
+		{
+			return null;
+		}
 	}
 
 	/** The panel's buttons; each change is made on the client thread, where the provisions live. */

@@ -1,10 +1,17 @@
 package com.codex.provisioner.core;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import java.io.IOException;
+import java.io.StringReader;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.Map;
+import net.runelite.api.Experience;
 import net.runelite.api.Skill;
 
 /**
@@ -296,14 +303,205 @@ public class Provisions
 		return chain;
 	}
 
+	/** Item counts with nothing below one or past a stack. */
+	private static Map<Integer, Long> counts(Map<Integer, Long> in)
+	{
+		Map<Integer, Long> out = new HashMap<>();
+		in.forEach((id, q) ->
+		{
+			if (id != null && id > 0 && q != null && q > 0)
+			{
+				out.put(id, Json.count(q));
+			}
+		});
+		return out;
+	}
+
 	/** Whether the last plan moved a progress bar's end, which is worth saving. */
 	public boolean baselinesChanged()
 	{
 		return baselinesChanged;
 	}
 
+	/** A saved provisions entry as read back: what could be kept, and whether anything was left out. */
+	public static final class Loaded
+	{
+		/** What was read; fresh provisions when nothing could be. Never null. */
+		public final Provisions provisions;
+		/** True when the save was not read whole, so it is worth setting aside as it was. */
+		public final boolean damaged;
+
+		Loaded(Provisions provisions, boolean damaged)
+		{
+			this.provisions = provisions;
+			this.damaged = damaged;
+		}
+	}
+
+	/**
+	 * Reads the saved provisions. A save that reads whole is repaired and kept; one that does not
+	 * (a figure of the wrong kind or too big for its field, one bad entry in the bank, a save cut
+	 * short) keeps every field and every entry that still reads, so one damaged figure never
+	 * costs the bank, the choices or the levels.
+	 *
+	 * @param now the time now; a bank seen later than this is taken as seen now
+	 */
+	public static Loaded read(Gson gson, String saved, long now)
+	{
+		if (saved == null || saved.trim().isEmpty())
+		{
+			return new Loaded(new Provisions(), false);
+		}
+		try
+		{
+			Provisions whole = gson.fromJson(saved, Provisions.class);
+			if (whole != null)
+			{
+				return new Loaded(whole.repair(now), false);
+			}
+		}
+		catch (RuntimeException e)
+		{
+			// Read it field by field below.
+		}
+		Provisions p = new Provisions();
+		JsonReader in = new JsonReader(new StringReader(saved));
+		in.setLenient(true);
+		try
+		{
+			if (in.peek() == JsonToken.BEGIN_OBJECT)
+			{
+				in.beginObject();
+				while (in.hasNext())
+				{
+					String name = in.nextName();
+					p.field(gson, name, gson.fromJson(in, JsonElement.class));
+				}
+			}
+		}
+		catch (IOException | RuntimeException e)
+		{
+			// A save cut short keeps every field before the cut.
+		}
+		return new Loaded(p.repair(now), true);
+	}
+
+	/** Sets one field from a damaged save, keeping each entry of it that reads. */
+	private void field(Gson gson, String name, JsonElement value)
+	{
+		try
+		{
+			switch (name)
+			{
+				case "bank":
+					bank = items(value);
+					break;
+				case "baselines":
+					baselines = items(value);
+					break;
+				case "stored":
+					stored = items(value);
+					break;
+				case "bankSeen":
+					Long seen = Json.whole(value);
+					bankSeen = seen == null ? 0 : seen;
+					break;
+				case "trips":
+					Long t = Json.whole(value);
+					trips = t == null ? DEFAULT_TRIPS : (int) Math.max(1, Math.min(1000, t));
+					break;
+				case "kit":
+					kit = value.isJsonPrimitive() ? value.getAsString() : null;
+					break;
+				case "bankShared":
+					bankShared = value.isJsonPrimitive() && value.getAsBoolean();
+					break;
+				case "iron":
+					iron = value.isJsonPrimitive() && value.getAsBoolean();
+					break;
+				case "choices":
+				case "levels":
+					Map<String, Integer> small = new HashMap<>();
+					named(value).forEach((k, v) -> small.put(k, (int) Math.max(Integer.MIN_VALUE, Math.min(Integer.MAX_VALUE, v))));
+					if ("choices".equals(name))
+					{
+						choices = small;
+					}
+					else
+					{
+						levels = small;
+					}
+					break;
+				case "xp":
+					xp = named(value);
+					break;
+				case "bought":
+					bought = new HashSet<>();
+					if (value.isJsonArray())
+					{
+						value.getAsJsonArray().forEach(e -> bought.add(e.isJsonPrimitive() ? e.getAsString() : null));
+					}
+					break;
+				case "pace":
+					pace = gson.fromJson(value, Pace.class);
+					break;
+				default:
+					// A field a later version keeps, unknown here.
+			}
+		}
+		catch (RuntimeException e)
+		{
+			// This field is lost; the rest are not.
+		}
+	}
+
+	/** Item counts by id, every entry that reads. */
+	private static Map<Integer, Long> items(JsonElement value)
+	{
+		Map<Integer, Long> out = new HashMap<>();
+		named(value).forEach((k, v) ->
+		{
+			try
+			{
+				out.put(Integer.parseInt(k), v);
+			}
+			catch (NumberFormatException ignored)
+			{
+				// Not an item id.
+			}
+		});
+		return out;
+	}
+
+	/** Whole numbers by name, every entry that reads. */
+	private static Map<String, Long> named(JsonElement value)
+	{
+		Map<String, Long> out = new HashMap<>();
+		if (value != null && value.isJsonObject())
+		{
+			for (Map.Entry<String, JsonElement> e : value.getAsJsonObject().entrySet())
+			{
+				Long n = Json.whole(e.getValue());
+				if (n != null)
+				{
+					out.put(e.getKey(), n);
+				}
+			}
+		}
+		return out;
+	}
+
 	/** Restores what saved data can leave out. */
 	public Provisions repair()
+	{
+		return repair(Long.MAX_VALUE);
+	}
+
+	/**
+	 * Restores what saved data can leave out, and sets right what damage can put in: counts below
+	 * zero or past a stack, levels and experience past the game's own, a bank seen after now.
+	 */
+	Provisions repair(long now)
 	{
 		if (bank == null)
 		{
@@ -334,6 +532,18 @@ public class Provisions
 		{
 			trips = DEFAULT_TRIPS;
 		}
+		trips = Math.min(1000, trips);
+		bank = counts(bank);
+		baselines = counts(baselines);
+		stored = stored == null ? null : counts(stored);
+		choices.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null);
+		levels.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null || e.getValue() <= 0);
+		levels.replaceAll((k, v) -> Math.min(Experience.MAX_VIRT_LEVEL, v));
+		xp.entrySet().removeIf(e -> e.getKey() == null || e.getValue() == null || e.getValue() < 0);
+		xp.replaceAll((k, v) -> Math.min(Experience.MAX_SKILL_XP, v));
+		bought.removeIf(b -> b == null || b.isEmpty());
+		kit = kit == null || kit.isEmpty() ? null : kit;
+		bankSeen = Math.max(0, Math.min(now, bankSeen));
 		return this;
 	}
 }

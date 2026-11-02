@@ -85,6 +85,10 @@ It is guidance only. It does not automate any input, change menus, send any data
 
 `./gradlew run` starts a development client with the plugin loaded.
 
+## Field notes
+
+An optional setting, **Keep field notes** (under Field notes, off by default), writes a plain record of what Provisioner reads and decides to its own folder in `.runelite/plugin-data` on your computer, one line at a time. It is for checking the plugin's guesses against real play: when something looks wrong, the notes show what it saw and why it chose what it did. Other players' chat is never written down, it stays on your computer, and nothing is sent anywhere.
+
 ## License
 
 BSD 2-Clause. See [LICENSE](LICENSE).

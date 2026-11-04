@@ -89,4 +89,15 @@ public interface CodexProvisionerConfig extends Config
 	{
 		return 3;
 	}
+
+	@ConfigItem(
+		keyName = "wayfinder",
+		name = "Travel with Wayfinder",
+		description = "With Codex Wayfinder on, say where each step is done, count the travel in a sitting with your teleports, and show a Route button",
+		position = 7
+	)
+	default boolean wayfinder()
+	{
+		return true;
+	}
 }

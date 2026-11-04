@@ -31,6 +31,8 @@ Part of the Codex suite, alongside Codex Quartermaster: kits you save in Quarter
 - **What it trains.** The Chain tab adds up the experience every open step gives, skill by skill, with the level each skill stands at now and the level it ends at once the chain is done.
 - **Time left on every step.** Each open step shows roughly how long it has left, and the Chain tab adds it all up. The Provisioner watches the steps shrink as you work and, once it has seen enough, uses your own pace (shown in teal on the step in hand); before that it uses a typical rate. Steps that cannot be timed, such as farm runs, drops and shop runs, are left out of the total and counted separately.
 - **In one sitting.** Pick 30 minutes, an hour, two or three, and the Chain tab lists what that sitting gets through at your pace: the step in hand first, then the chain in order, each step as far as the time and its inputs allow, so a load is only cooked once it has been caught. What it cannot reach, and why (another sitting, herbs still to grow, a level still to train), is said under it.
+- **Where, and the trip there.** Steps done in a particular place (sharks, swordfish and lobsters at Catherby, the Fishing Guild or Musa Point, anglerfish and sandworms in Port Piscarilius, monkfish at Piscatoris, karambwan at fairy ring DKP, snape grass on Waterbirth Island, red spiders' eggs in Edgeville Dungeon, wine of Zamorak at the Chaos Temple, mort myre fungus by Ver Sinhaza, blue dragon scales in Taverley Dungeon) say where, picking the spot quickest to reach with the teleports you own and leaving out the Fishing Guild below 68 Fishing. With Codex Wayfinder on, a **Route** button plots the way there.
+- **A sitting is a trip.** With Codex Wayfinder on, *In one sitting* becomes an itinerary: each piece of work at its spot, the travel between them ("To Catherby: Camelot Teleport, then 79 tiles · 32s"), and the travel counted inside the sitting, which is planned again with that time taken out so what it promises still fits.
 - **Ready for how many trips.** Under the step in hand, and as a tile on the Stores tab, the Provisioner says how many whole trips what you hold already covers and which supply runs out first: "Ready for 3 of 10 trips now. First to run out: prayer and restores." Kits on the Kits tab say the same. You can stop at any point and go.
 - **Herb runs.** Herbs still to grow are planned as herb runs instead of being left untimed: how many runs your patches take, how long they need to grow (80 minutes a run), and how many seeds that plants against the seeds in your bank. Different herbs share a run. Set how many patches you run and how many herbs a patch gives you in the settings; 0 patches leaves herbs untimed.
 - **Plaque.** An optional overlay in the game view with the step in hand, how many are left and its progress (*Step plaque*).
@@ -60,6 +62,7 @@ Anything else a kit carries, such as teleport tablets, is listed to stock as it 
 - **Plan from measured trips** (on): plan a Codex Quartermaster kit from what you really used on its measured trips rather than its own amounts.
 - **Mark items in the bank** (on): outline what the step in hand needs for one inventory while the bank is open.
 - **Herb patches** and **Herbs per patch**: how many patches you run and what one gives you, for the herb runs; 0 patches leaves herbs untimed.
+- **Travel with Wayfinder** (on): with Codex Wayfinder on, say where each step is done, count the travel in a sitting and show a Route button.
 - **Low stock warning** (3 trips): the chat line at the bank when your kit's supplies run low; 0 turns it off.
 
 ## With other Codex plugins
@@ -68,6 +71,7 @@ The Provisioner works on its own with its nine presets. When these are installed
 
 - **Codex Quartermaster**: your saved kits, the kit you last picked, what each kit really used on measured trips, and its reading of your potion storage.
 - **Codex Bank Steward**: its shared copy of your bank, so a fresh install plans from your bank before you open it.
+- **Codex Wayfinder**: the travel atlas it shares (`codexwayfinder/atlasV1`: the teleports this account owns, their landing tiles and seconds, and your walking pace). A teleport kept in the bank is counted with a minute added for the bank stop, a planning assumption. The Route button sends the plugin messages `route` (answered with `routed`, whose time is then shown) and `show` on the `codexwayfinder` namespace. Without Wayfinder, steps still say where, and the sitting is planned without travel.
 
 A damaged save from any of them, or of the Provisioner's own (a figure of the wrong kind or too big, a file cut short), never stops the panel: whatever still reads is used, the rest left out, and a damaged save of its own is set aside in your profile before it is written over.
 

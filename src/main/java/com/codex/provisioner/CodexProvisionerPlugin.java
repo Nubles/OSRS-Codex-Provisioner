@@ -1,5 +1,9 @@
 package com.codex.provisioner;
 
+import com.codex.provisioner.core.Spots;
+
+import com.codex.provisioner.core.Travel;
+
 import com.codex.provisioner.core.Chain;
 import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.HerbRuns;
@@ -70,13 +74,17 @@ import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.events.PluginChanged;
+import net.runelite.client.events.PluginMessage;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
@@ -142,6 +150,15 @@ public class CodexProvisionerPlugin extends Plugin
 	@Inject
 	private CodexProvisionerConfig config;
 
+	@Inject
+	private EventBus eventBus;
+
+	@Inject
+	private PluginManager pluginManager;
+
+	/** Codex Wayfinder: its travel atlas and the Route button. */
+	private WayfinderLink wayfinder;
+
 	/** Windows in which items change hands by trade, so a step shrinking then is not work. */
 	private static final Set<Integer> TRADE_WINDOWS = new HashSet<>(java.util.Arrays.asList(
 		InterfaceID.GE_OFFERS, InterfaceID.GE_COLLECT, InterfaceID.SHOPMAIN, InterfaceID.TRADEMAIN, InterfaceID.TRADECONFIRM));
@@ -197,6 +214,8 @@ public class CodexProvisionerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		wayfinder = new WayfinderLink(pluginManager, eventBus, configManager, clientThread, gson);
+		wayfinder.refresh();
 		Arrivals arrivals = new Arrivals();
 		ItemIcons icons = (itemId, onLoaded) ->
 		{
@@ -312,6 +331,7 @@ public class CodexProvisionerPlugin extends Plugin
 	@Subscribe
 	public void onRuneScapeProfileChanged(RuneScapeProfileChanged event)
 	{
+		wayfinder.refresh();
 		save();
 		loadProfile();
 		restock.reset();
@@ -327,10 +347,62 @@ public class CodexProvisionerPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onPluginChanged(PluginChanged event)
+	{
+		wayfinder.refresh();
+		dirty = true;
+	}
+
+	@Subscribe
+	public void onPluginMessage(PluginMessage event)
+	{
+		if (wayfinder.heard(event))
+		{
+			dirty = true;
+		}
+	}
+
+	/** Where the player stands, or null. */
+	private int[] here()
+	{
+		net.runelite.api.Player me = client.getLocalPlayer();
+		if (me == null || client.getGameState() != GameState.LOGGED_IN)
+		{
+			return null;
+		}
+		net.runelite.api.coords.WorldPoint p = net.runelite.api.coords.WorldPoint.fromLocalInstance(client, me.getLocalLocation());
+		return p == null ? null : new int[]{p.getX(), p.getY(), p.getPlane()};
+	}
+
+	/** Wayfinder's answers for the places the chain sends the player, in words, by key. */
+	private Map<String, String> routed(Chain chain)
+	{
+		Map<String, String> out = new HashMap<>();
+		for (Step s : chain.getSteps())
+		{
+			for (Spots.Spot spot : Spots.of(s.getItem()))
+			{
+				String key = "spot:" + spot.x + "," + spot.y + "," + spot.plane;
+				Travel.Routed r = wayfinder.reply(key);
+				if (r != null && r.found)
+				{
+					out.put(key, "Wayfinder: " + Travel.time(r.seconds) + (r.steps.isEmpty() ? "" : " · " + r.steps.get(0)));
+				}
+			}
+		}
+		return out;
+	}
+
+	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
 		if (CodexProvisionerConfig.GROUP.equals(event.getGroup()))
 		{
+			dirty = true;
+		}
+		else if (Travel.GROUP.equals(event.getGroup()) && Travel.KEY.equals(event.getKey()))
+		{
+			wayfinder.refresh();
 			dirty = true;
 		}
 		else if (Quarters.GROUP.equals(event.getGroup()) && event.getKey() != null
@@ -857,7 +929,9 @@ public class CodexProvisionerPlugin extends Plugin
 			.pace(estimates, measuredPace)
 			.work(loads, training)
 			.herbs(herbRuns)
-			.shared(provisions.isBankShared());
+			.shared(provisions.isBankShared())
+			.travel(config.wayfinder() ? wayfinder.atlas() : null, loggedIn ? here() : null, config.wayfinder() && wayfinder.on(),
+				config.wayfinder() && wayfinder.on() ? routed(chain) : null);
 
 		if (loggedIn && config.plaque() && provisions.hasBank() && current != null)
 		{
@@ -1053,6 +1127,15 @@ public class CodexProvisionerPlugin extends Plugin
 		public void restart()
 		{
 			change(() -> provisions.restart());
+		}
+
+		@Override
+		public void route(String name, int x, int y, int plane, String key)
+		{
+			if (config.wayfinder())
+			{
+				wayfinder.route(x, y, plane, name, key);
+			}
 		}
 
 		private void change(Runnable edit)

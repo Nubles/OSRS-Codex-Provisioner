@@ -77,6 +77,14 @@ public final class View
 	Map<Integer, HerbRuns.Plan> herbRuns = Collections.emptyMap();
 	/** The bank as last seen is the one Codex Bank Steward shared. */
 	boolean bankShared;
+	/** Codex Wayfinder's atlas, or null. */
+	com.codex.provisioner.core.Travel travel;
+	/** Where the player stands, or null. */
+	int[] here;
+	/** Codex Wayfinder is on, so places have a Route button. */
+	boolean wayfinder;
+	/** Wayfinder's own answers for places it was asked about, in words, by key. */
+	Map<String, String> routed = Collections.emptyMap();
 
 	public View(State state, Chain chain, List<KitSummary> kits, Map<Integer, String> names, Map<Integer, Long> held,
 		Map<Skill, Integer> levels, boolean quartermaster, int measured, long bankSeen, boolean bankOpen, long now)
@@ -126,6 +134,21 @@ public final class View
 	{
 		this.herbRuns = plans == null ? Collections.emptyMap() : plans;
 		return this;
+	}
+
+	public View travel(com.codex.provisioner.core.Travel travel, int[] here, boolean wayfinder, Map<String, String> routed)
+	{
+		this.travel = travel;
+		this.here = here;
+		this.wayfinder = wayfinder;
+		this.routed = routed == null ? Collections.emptyMap() : routed;
+		return this;
+	}
+
+	/** The key a place is asked about under. */
+	static String spotKey(com.codex.provisioner.core.Spots.Spot s)
+	{
+		return "spot:" + s.x + "," + s.y + "," + s.plane;
 	}
 
 	public View shared(boolean bankShared)

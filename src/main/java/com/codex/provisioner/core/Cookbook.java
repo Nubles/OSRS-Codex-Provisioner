@@ -197,7 +197,7 @@ public final class Cookbook
 			.how("Add a clean irit leaf to coconut milk.");
 		add(Verb.GATHER, ItemID.VIAL_COCONUT_MILK)
 			.how("Crack coconuts with a hammer and pour the milk into empty vials.");
-		add(Verb.MIX, ItemID.ANTIDOTE__4).from(ItemID.UNFINISHED_ANTIDOTE__, 1).from(ItemID.MAGIC_ROOTS, 1).needs(Skill.HERBLORE, 79).xp(Skill.HERBLORE, 155).rate(2500)
+		add(Verb.MIX, ItemID.ANTIDOTE__4).from(ItemID.UNFINISHED_ANTIDOTE__, 1).from(ItemID.MAGIC_ROOTS, 1).needs(Skill.HERBLORE, 79).xp(Skill.HERBLORE, 177.5).rate(2500)
 			.how("Add magic roots to the unfinished antidote++.");
 		add(Verb.GATHER, ItemID.MAGIC_ROOTS).grows(Skill.FARMING, 75)
 			.how("Chop down a grown magic tree from your patch, then dig up its roots.");

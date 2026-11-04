@@ -1,7 +1,10 @@
 package com.codex.provisioner.ui;
 
 import com.codex.provisioner.core.Chain;
+import com.codex.provisioner.core.Itinerary;
 import com.codex.provisioner.core.Sitting;
+import com.codex.provisioner.core.Spots;
+import com.codex.provisioner.core.Travel;
 import com.codex.provisioner.core.Step;
 import com.codex.provisioner.core.Tree;
 import com.codex.provisioner.core.Supplies;
@@ -280,6 +283,11 @@ public class ProvisionerPanel extends PluginPanel
 		else if (now != null)
 		{
 			stack.add(new NowCard(chain, now, view, icons, WIDTH - 30));
+			JComponent where = where(now);
+			if (where != null)
+			{
+				stack.add(where);
+			}
 		}
 		String runway = runway(chain);
 		if (runway != null && !chain.provisioned())
@@ -386,12 +394,82 @@ public class ProvisionerPanel extends PluginPanel
 		replace(chainPage, stack);
 	}
 
+	/** Where the step in hand is done, the way there, and a Route button when Codex Wayfinder is on; or null. */
+	private JComponent where(Step step)
+	{
+		Spots.Spot best = null;
+		Travel.Leg bestLeg = null;
+		for (Spots.Spot spot : Spots.of(step.getItem()))
+		{
+			if (!spot.open(view.levels))
+			{
+				continue;
+			}
+			Travel.Leg leg = view.travel == null ? null : view.travel.to(view.here, spot.x, spot.y, spot.plane, 60);
+			if (best == null || leg != null && (bestLeg == null || leg.seconds < bestLeg.seconds))
+			{
+				best = spot;
+				bestLeg = leg;
+			}
+		}
+		if (best == null)
+		{
+			return null;
+		}
+		Card card = new Card(new BorderLayout(6, 0));
+		card.setBorder(new EmptyBorder(6, 8, 6, 8));
+		StackPanel text = new StackPanel(2, 0);
+		text.add(Ui.label("Where: " + best.name, Theme.small(), Theme.GOLD_BRIGHT));
+		String said = view.routed.get(View.spotKey(best));
+		String way = said != null ? said : bestLeg != null ? bestLeg.say() : null;
+		if (way != null)
+		{
+			text.add(Ui.wrapped(way, Theme.small(), Theme.TEAL, WIDTH - (view.wayfinder ? 100 : 40)));
+		}
+		card.add(text, BorderLayout.CENTER);
+		if (view.wayfinder)
+		{
+			card.add(routeButton(best), BorderLayout.EAST);
+		}
+		return card;
+	}
+
+	private JComponent routeButton(Spots.Spot spot)
+	{
+		JPanel holder = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+		holder.setOpaque(false);
+		holder.add(new CodexButton("Route", true, () -> actions.route(spot.name, spot.x, spot.y, spot.plane, View.spotKey(spot))));
+		return holder;
+	}
+
+	/** The trip to a stop of the sitting: where, how long, and how. */
+	private JComponent leg(Itinerary.Stop stop)
+	{
+		StackPanel box = new StackPanel(2, 0);
+		String said = view.routed.get(View.spotKey(stop.spot));
+		String how = said != null ? said : stop.leg != null ? "To " + stop.spot.name + ": " + stop.leg.how() : "At " + stop.spot.name;
+		JPanel top = new JPanel(new BorderLayout(6, 0));
+		top.setOpaque(false);
+		top.add(Ui.wrapped(how, Theme.small(), Theme.TEAL, WIDTH - 70), BorderLayout.CENTER);
+		if (stop.leg != null)
+		{
+			top.add(Ui.label(Travel.time(stop.leg.seconds), Theme.small(), Theme.TEAL), BorderLayout.EAST);
+		}
+		box.add(top);
+		if (view.wayfinder)
+		{
+			box.add(routeButton(stop.spot));
+		}
+		return box;
+	}
+
 	/** What one sitting of the chosen length gets through, the step in hand first. */
 	private void sitting(StackPanel stack, Chain chain)
 	{
 		long budget = SITTINGS[Math.max(0, Math.min(SITTINGS.length - 1, sittingLength.getSelected()))] * 60_000L;
 		java.util.Set<Integer> grown = new java.util.HashSet<>(view.herbRuns.keySet());
-		Sitting plan = Sitting.plan(chain, view.estimates, grown, budget);
+		Itinerary trip = Itinerary.plan(chain, view.estimates, grown, budget, view.levels, view.travel, view.here);
+		Sitting plan = trip.getSitting();
 		boolean own = false;
 		for (Sitting.Piece p : plan.getPieces())
 		{
@@ -406,8 +484,13 @@ public class ProvisionerPanel extends PluginPanel
 			rows.add(Ui.wrapped("Nothing left can be worked in a sitting yet; it waits on what is grown, dropped or above your levels.",
 				Theme.small(), Theme.TEXT_MUTED, WIDTH - 30));
 		}
-		for (Sitting.Piece p : plan.getPieces())
+		for (Itinerary.Stop stop : trip.getStops())
 		{
+			Sitting.Piece p = stop.piece;
+			if (stop.spot != null && (stop.leg != null || view.wayfinder))
+			{
+				rows.add(leg(stop));
+			}
 			Step s = p.getStep();
 			String what = s.getRecipe().getVerb().label() + " " + Format.amount(p.getAmount())
 				+ (p.finishes() ? "" : " of " + Format.amount(s.getNet())) + " " + view.name(s.getItem()).toLowerCase(Locale.ENGLISH);
@@ -425,9 +508,15 @@ public class ProvisionerPanel extends PluginPanel
 		card.add(rows, BorderLayout.CENTER);
 		stack.add(card);
 		String foot;
+		String travelled = trip.getTravelMs() > 0 ? ", " + Format.estimate(trip.getTravelMs()) + " of it travel" : "";
+		if (trip.getTravelMs() > 0)
+		{
+			stack.add(Ui.wrapped("About " + Format.estimate(trip.getTotalMs()) + " in all" + travelled + ", by the teleports you own.",
+				Theme.small(), Theme.TEAL, WIDTH - 16));
+		}
 		if (plan.isEverything())
 		{
-			foot = "That is every timed step, in about " + Format.estimate(plan.getUsed()) + ".";
+			foot = "That is every timed step, in about " + Format.estimate(trip.getTotalMs()) + travelled + ".";
 		}
 		else
 		{

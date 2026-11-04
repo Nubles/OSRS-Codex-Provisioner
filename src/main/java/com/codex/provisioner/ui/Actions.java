@@ -13,4 +13,9 @@ public interface Actions
 	void buy(String supply, boolean buy);
 
 	void restart();
+
+	/** Asks Codex Wayfinder to plot the way to a place. */
+	default void route(String name, int x, int y, int plane, String key)
+	{
+	}
 }

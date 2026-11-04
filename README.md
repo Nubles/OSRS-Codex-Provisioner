@@ -79,7 +79,7 @@ A damaged save from any of them, or of the Provisioner's own (a figure of the wr
 
 The bank is read from `ItemContainerChanged` while it is open and remembered as last seen, so the panel works anywhere; its potion storage is read with the game's own dose script while the bank is open. Prices come from RuneLite's item manager. Your pace is learned from small, steady drops in a step's count with no break longer than two minutes; a big jump, such as a bank first seen, teaches nothing, and neither does anything that arrives by trade, however small: nothing is learned while a shop, trade or Grand Exchange window is open, an item the exchange buys for you is marked so its arrival is passed over when you collect it, and buying steps are never timed. The inventory, worn items (bolts in the ammo slot count) and rune pouch are read as they change, and levels come from `StatChanged`. Codex Quartermaster's kits and measured usage are read from the kits it publishes for other plugins (`codexquartermaster/kitsV1`), with its own saved entry (`quarters`) read only for what that leaves out (the number of trips measured and its potion storage reading) or when Quartermaster is too old to publish. Codex Bank Steward's shared bank (`codexbanksteward/bankV1`) is taken only when it is newer than the bank the Provisioner saw itself, by more than a minute; taking it finishes no step in the chat and teaches no pace. The Provisioner never writes to either plugin's config, and works the same without them. Its own state is stored per account in the RuneLite profile config as one compact entry.
 
-It is guidance only. It does not automate any input, change menus, send any data off the client, or read or write files.
+It is guidance only. It does not automate any input, change menus, send any data off the client, or read or write files apart from the optional field notes below.
 
 ## Building
 
@@ -88,6 +88,10 @@ It is guidance only. It does not automate any input, change menus, send any data
 ```
 
 `./gradlew run` starts a development client with the plugin loaded.
+
+## Field notes
+
+An optional setting, **Keep field notes** (under Field notes, off by default), writes a plain record of what Provisioner reads and decides to its own folder in `.runelite/plugin-data` on your computer, one line at a time. It is for checking the plugin's guesses against real play: when something looks wrong, the notes show what it saw and why it chose what it did. Other players' chat is never written down, it stays on your computer, and nothing is sent anywhere.
 
 ## License
 

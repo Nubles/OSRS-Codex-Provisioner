@@ -1,9 +1,8 @@
 package com.codex.provisioner;
 
+import com.codex.provisioner.notes.FieldNotes;
 import com.codex.provisioner.core.Spots;
-
 import com.codex.provisioner.core.Travel;
-
 import com.codex.provisioner.core.Chain;
 import com.codex.provisioner.core.Costing;
 import com.codex.provisioner.core.HerbRuns;
@@ -159,6 +158,9 @@ public class CodexProvisionerPlugin extends Plugin
 	/** Codex Wayfinder: its travel atlas and the Route button. */
 	private WayfinderLink wayfinder;
 
+	/** The optional local record of what the plugin read and decided. */
+	private FieldNotes notes;
+
 	/** Windows in which items change hands by trade, so a step shrinking then is not work. */
 	private static final Set<Integer> TRADE_WINDOWS = new HashSet<>(java.util.Arrays.asList(
 		InterfaceID.GE_OFFERS, InterfaceID.GE_COLLECT, InterfaceID.SHOPMAIN, InterfaceID.TRADEMAIN, InterfaceID.TRADECONFIRM));
@@ -214,6 +216,11 @@ public class CodexProvisionerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		notes = new FieldNotes(this::getPluginDirectory, gson);
+		if (config.fieldNotes())
+		{
+			notes.open();
+		}
 		wayfinder = new WayfinderLink(pluginManager, eventBus, configManager, clientThread, gson);
 		wayfinder.refresh();
 		Arrivals arrivals = new Arrivals();
@@ -258,6 +265,11 @@ public class CodexProvisionerPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		if (notes != null)
+		{
+			notes.shutdown();
+			notes = null;
+		}
 		overlayManager.remove(plaque);
 		overlayManager.remove(bankMarks);
 		bankMarks.show(Collections.emptyMap());
@@ -396,6 +408,18 @@ public class CodexProvisionerPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
+		if (CodexProvisionerConfig.GROUP.equals(event.getGroup()) && "fieldNotes".equals(event.getKey()) && notes != null)
+		{
+			if (config.fieldNotes())
+			{
+				notes.open();
+			}
+			else
+			{
+				notes.close();
+			}
+			return;
+		}
 		if (CodexProvisionerConfig.GROUP.equals(event.getGroup()))
 		{
 			dirty = true;
@@ -861,6 +885,40 @@ public class CodexProvisionerPlugin extends Plugin
 			}
 			int open = c.getSteps().size() - c.doneCount();
 			summaries.add(new View.KitSummary(k, open, shortSupplies, quarters.measuredTrips(k.getId())).ready(c.readyTrips()));
+		}
+		if (notes.isOpen())
+		{
+			// The plan for the active kit: what is short, and each step's state, so a wrong count can be traced.
+			com.google.gson.JsonObject n = new com.google.gson.JsonObject();
+			n.addProperty("kit", kit == null ? null : kit.getName());
+			n.addProperty("trips", chain.getTrips());
+			com.google.gson.JsonArray lines = new com.google.gson.JsonArray();
+			for (Chain.Line l : chain.getLines())
+			{
+				com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+				o.addProperty("supply", l.getSupply().getName());
+				o.addProperty("want", l.getWant());
+				o.addProperty("have", l.getHave());
+				o.addProperty("short", l.getShort());
+				o.addProperty("product", l.getProduct());
+				o.addProperty("make", l.getToMake());
+				lines.add(o);
+			}
+			n.add("lines", lines);
+			com.google.gson.JsonArray steps = new com.google.gson.JsonArray();
+			for (Step st : chain.getSteps())
+			{
+				com.google.gson.JsonObject o = new com.google.gson.JsonObject();
+				o.addProperty("item", st.getItem());
+				o.addProperty("state", String.valueOf(st.getState()));
+				o.addProperty("net", st.getNet());
+				o.addProperty("held", st.getHeld());
+				o.addProperty("canNow", st.getCanNow());
+				o.addProperty("unmet", st.getUnmet() == null ? null : String.valueOf(st.getUnmet()));
+				steps.add(o);
+			}
+			n.add("steps", steps);
+			notes.noteChanged("plan", n);
 		}
 		for (Step s : chain.getSteps())
 		{
